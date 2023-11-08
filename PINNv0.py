@@ -41,10 +41,10 @@ class PhysicsInformedNN:
                                                      log_device_placement=True))
         
         # batch_size = 16
-        self.x_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.x.shape[1]])
-        self.y_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.y.shape[1]])
-        self.u_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.u.shape[1]])
-        self.v_tf = tf.compat.v1.placeholder(tf.float32, shape=[None, self.v.shape[1]])
+        self.x_tf = tf.keras.Input(dtype=tf.float32, shape=[self.x.shape[1]])
+        self.y_tf = tf.keras.Input(dtype=tf.float32, shape=[self.y.shape[1]])
+        self.u_tf = tf.keras.Input(dtype=tf.float32, shape=[self.u.shape[1]])
+        self.v_tf = tf.keras.Input(dtype=tf.float32, shape=[self.v.shape[1]])
         
         self.u_pred, self.v_pred, self.p_pred, self.f_u_pred, self.f_v_pred, \
         self.gammap_pred, self.eta_pred, self.psi_pred = self.net_NS(self.x_tf, self.y_tf)
@@ -86,10 +86,10 @@ class PhysicsInformedNN:
 
     def neural_net(self, X, weights, biases):
         num_layers = len(weights) + 1
-        
         H = 2.0*(X - self.lb)/(self.ub - self.lb) - 1.0
         for l in range(0,num_layers-2):
             W = weights[l]
+            
             b = biases[l]
             H = tf.tanh(tf.add(tf.matmul(H, W), b))
         W = weights[-1]
@@ -101,7 +101,7 @@ class PhysicsInformedNN:
     def net_NS(self, x, y):
         lambda_1 = self.lambda_1 
         lambda_2 = self.lambda_2
-        
+
         psi_and_p = self.neural_net(tf.concat([x,y], 1), self.weights, self.biases)
         psi = psi_and_p[:,0:1]
         p = psi_and_p[:,1:2]
@@ -168,7 +168,7 @@ class PhysicsInformedNN:
                 elapsed = time.time() - start_time
                 loss_phy_value = self.sess.run(self.loss_phy, tf_dict)
                 loss_data_value = self.sess.run(self.loss_data, tf_dict)
-                loss_reg_value = self.sess.run(self.loss_reg, tf_dict)
+                #loss_reg_value = self.sess.run(self.loss_reg, tf_dict)
                 lambda_1_value = self.sess.run(self.lambda_1)
                 print('It: %d, Loss data: %.3e, Loss phy: %.3e, l1: %.3e, Time: %.2f' % 
                       (it, loss_data_value, loss_phy_value, lambda_1_value, elapsed))
@@ -226,7 +226,7 @@ N_train = 100
 layers = [2, 16, 16, 16, 16, 2]
 
 # Load Data
-data = np.loadtxt("C:/Users/Admin/Documents/Thèse/work/code/data/simulation/snaps/Macro_select.dat") # i, j, rho, u, v
+data = np.loadtxt("/home/mlardy/Documents/these/work/codes/Pinn/Macro_select.dat") # i, j, rho, u, v
 
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
@@ -289,8 +289,8 @@ np.savetxt("x_train.dat", X_train)
 
 # Training
 model = PhysicsInformedNN(x_train, y_train, u_train, v_train, layers, coeff_k)
-model.train(10000)
-# model.train(250000)
+#model.train(10000)
+model.train(250000)
 
 u_pred, v_pred, p_pred, gammap_pred, eta_pred , f_u_pred, f_v_pred, psi_pred = model.predict(x, y)
 data_predict = np.zeros((N,10)) # i, j, u, v, P, gammap, eta, f_u, f_v, psi
