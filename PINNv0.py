@@ -195,13 +195,13 @@ class Sequentialmodel(tf.Module):
             S11 = u_x
             S22 = v_y
             S12 = 0.5 * (u_y + v_x)
-        
+    
             gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
         
             gammap = tf.math.maximum(gammap, 1.e-14)
         
             gammap_mean = tf.math.reduce_mean(gammap)
-            
+        
             eta = lambda_1 * gammap**(-1.) + lambda_2
         
             eta = eta / lambda_2
@@ -213,10 +213,10 @@ class Sequentialmodel(tf.Module):
             sig12 = 2. * eta * S12
             sig22 = 2. * eta * S22
             
-            sig11_x = tape.gradient(sig11, xtemp)
-            sig12_x = tape.gradient(sig12, xtemp)
-            sig12_y = tape.gradient(sig12, ytemp)
-            sig22_y = tape.gradient(sig22, ytemp)
+        sig11_x = tape.gradient(sig11, xtemp)
+        sig12_x = tape.gradient(sig12, xtemp)
+        sig12_y = tape.gradient(sig12, ytemp)
+        sig22_y = tape.gradient(sig22, ytemp)
     
         del tape
         
