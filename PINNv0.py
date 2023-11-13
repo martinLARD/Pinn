@@ -9,7 +9,7 @@ N_train = 10
 layers = [2, 16, 16, 16, 16, 2]
 
 # Load Data
-data = np.loadtxt("/home/Documents/these/work/codes/Pinn/Macro_select.dat") # i, j, rho, u, v
+data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
 
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
