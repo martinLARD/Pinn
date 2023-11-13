@@ -4,7 +4,7 @@ import time
 import matplotlib.pyplot as plt
 
 
-N_train = 10
+N_train = 200
    
 layers = [2, 16, 16, 16, 16, 2]
 
