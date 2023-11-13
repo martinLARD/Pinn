@@ -327,10 +327,13 @@ optimizer2 = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.
 
 optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-07)
 
-num_epochs = 2500
+num_epochs = 1000000
 
 save=np.zeros(num_epochs)
 savelbd=np.zeros(num_epochs)
+loss_file = open("loss.dat","w")
+loss_file.close()
+
 
 for epoch in range(num_epochs):
         loss_value, grads, gradslbd,loss_u,loss_ph= PINN.adaptive_gradients()
@@ -343,11 +346,16 @@ for epoch in range(num_epochs):
             loss_file.write(f'{loss_u:.3e}'+" "+\
                                 f'{loss_ph:.3e}'+" "+\
                                 f'{loss_value:.3e}'+"\n")
+            
         optimizer_lbd1.apply_gradients(zip([gradslbd], [PINN.lambda_1]))
-        savelbd[epoch]=tf.get_static_value(PINN.lambda_1)
+        savelbd[epoch]=PINN.lambda_1.numpy()[0]
         for i in range((len(layers)-1)*2-1):
             optimizer.apply_gradients(zip([grads[i]], [PINN.W[i]]))
-        
+
+lbd_file = open("lbd.dat","w") 
+lbd_file.write(f'{savelbd}') 
+lbd_file.close()        
+
 
      #gradient descent weights 
 init_params = PINN.get_weights().numpy()
