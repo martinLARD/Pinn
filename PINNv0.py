@@ -225,14 +225,15 @@ class Sequentialmodel(tf.Module):
         f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
         
         loss_phy = 0.001 * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
+        loss_data = tf.reduce_sum(tf.square(u_train - u)) + tf.reduce_sum(tf.square(v_train - v))
+
     
-    
-        return loss_phy
+        return loss_phy,loss_data
         
     def loss(self,X,u,v):
         
-        loss_u = self.loss_data(u,v)
-        loss_ph = self.loss_PDE(X[:,0],X[:,1])
+        #loss_u = self.loss_data(u,v)
+        loss_ph,loss_u = self.loss_PDE(X[:,0],X[:,1])
 
         loss = loss_u + loss_ph
 
@@ -322,39 +323,50 @@ PINN = Sequentialmodel(layers)
 
 start_time = time.time() 
 
-optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-07)
-optimizer2 = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-07)
 
-optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-07)
-
-num_epochs = 1000000
+num_epochs = 1000
 
 save=np.zeros(num_epochs)
 savelbd=np.zeros(num_epochs)
 loss_file = open("loss.dat","w")
 loss_file.close()
+loss_file = open("lbd.dat","w")
+loss_file.close()
+
+learn1=0.001
+learn2=0.001
+optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=learn1   , epsilon=1e-07)
+optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
 
 
 for epoch in range(num_epochs):
+    
+
+    
         loss_value, grads, gradslbd,loss_u,loss_ph= PINN.adaptive_gradients()
         save[epoch]=tf.get_static_value(loss_value)
-        
 
-        if epoch % 50 == 0:
-            print('#########',epoch,':',tf.get_static_value(loss_value),'#########')
-            loss_file = open("loss.dat","a")
-            loss_file.write(f'{loss_u:.3e}'+" "+\
-                                f'{loss_ph:.3e}'+" "+\
-                                f'{loss_value:.3e}'+"\n")
-            
+        if epoch % 10 == 0:
+            print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'#########')
+        loss_file = open("loss.dat","a")
+        loss_file.write(f'{loss_u:.3e}'+" "+\
+                            f'{loss_ph:.3e}'+" "+\
+                            f'{loss_value:.3e}'+"\n")
+        loss_file.close()
+        lbd_file = open("lbd.dat","a") 
+        lbd_file.write(f'{PINN.lambda_1.numpy()[0]}'+"\n") 
+        lbd_file.close()        
+
         optimizer_lbd1.apply_gradients(zip([gradslbd], [PINN.lambda_1]))
-        savelbd[epoch]=PINN.lambda_1.numpy()[0]
+        
         for i in range((len(layers)-1)*2-1):
             optimizer.apply_gradients(zip([grads[i]], [PINN.W[i]]))
 
-lbd_file = open("lbd.dat","w") 
-lbd_file.write(f'{savelbd}') 
-lbd_file.close()        
+
+
+
+
+
 
 
      #gradient descent weights 
