@@ -139,31 +139,11 @@ class Sequentialmodel(tf.Module):
             parameters_1d = tf.concat([parameters_1d, b_1d], 0) #concat biases
         
         return parameters_1d
-        
-    def set_weights(self,parameters):
-                
-        for i in range (len(layers)-1):
 
-            shape_w = tf.shape(self.W[2*i]).numpy() # shape of the weight tensor
-            size_w = tf.size(self.W[2*i]).numpy() #size of the weight tensor 
-            
-            shape_b = tf.shape(self.W[2*i+1]).numpy() # shape of the bias tensor
-            size_b = tf.size(self.W[2*i+1]).numpy() #size of the bias tensor 
-                        
-            pick_w = parameters[0:size_w] #pick the weights 
-            self.W[2*i].assign(tf.reshape(pick_w,shape_w)) # assign  
-            parameters = np.delete(parameters,np.arange(size_w),0) #delete 
-            
-            pick_b = parameters[0:size_b] #pick the biases 
-            self.W[2*i+1].assign(tf.reshape(pick_b,shape_b)) # assign 
-            parameters = np.delete(parameters,np.arange(size_b),0) #delete 
-            
-    def loss_data(self,u_pred,v_pred):
+    def loss(self, X):
         
-        loss_data = tf.reduce_sum(tf.square(u_train - u_pred)) + tf.reduce_sum(tf.square(v_train - v_pred))
-        return loss_data
-    
-    def loss_PDE(self, x, y):
+        x=X[:,0]
+        y=X[:,1]
         lambda_1 = self.lambda_1
         lambda_2 = coeff_k
     
@@ -174,7 +154,7 @@ class Sequentialmodel(tf.Module):
         xtemp=tf.Variable(x, trainable=False)
         ytemp=tf.Variable(y, trainable=False)
         with tf.GradientTape(persistent=True) as tape:
-    
+
             tape.watch(xtemp)
             tape.watch(ytemp)
             psi_and_p= self.evaluate(xtemp,ytemp)
@@ -195,7 +175,7 @@ class Sequentialmodel(tf.Module):
             S11 = u_x
             S22 = v_y
             S12 = 0.5 * (u_y + v_x)
-    
+
             gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
         
             gammap = tf.math.maximum(gammap, 1.e-14)
@@ -212,111 +192,38 @@ class Sequentialmodel(tf.Module):
             sig11 = 2. * eta * S11
             sig12 = 2. * eta * S12
             sig22 = 2. * eta * S22
-            
+
+######this takes time#####
         sig11_x = tape.gradient(sig11, xtemp)
         sig12_x = tape.gradient(sig12, xtemp)
         sig12_y = tape.gradient(sig12, ytemp)
         sig22_y = tape.gradient(sig22, ytemp)
-    
+######this take time #####
         del tape
-        
+
         eps = 1.e-6
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
         f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
         
         loss_phy = 0.001 * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
         loss_data = tf.reduce_sum(tf.square(u_train - u)) + tf.reduce_sum(tf.square(v_train - v))
+        losstot=loss_phy+loss_data
+        return losstot,loss_phy,loss_data
+        
 
-    
-        return loss_phy,loss_data
-        
-    def loss(self,X,u,v):
-        
-        #loss_u = self.loss_data(u,v)
-        loss_ph,loss_u = self.loss_PDE(X[:,0],X[:,1])
-
-        loss = loss_u + loss_ph
-
-        return loss, loss_u, loss_ph
-    
-    def optimizerfunc(self,parameters):
-        
-        self.set_weights(parameters)
-       
-        with tf.GradientTape() as tape:
-            tape.watch(self.trainable_variables)
-            loss_val, loss_u, loss_f = self.loss(X_train, u_train, v_train)
-            
-        grads = tape.gradient(loss_val,self.trainable_variables)
-                
-        del tape
-        
-        grads_1d = [ ] #flatten grads 
-        
-        for i in range (len(layers)-1):
-
-            grads_w_1d = tf.reshape(grads[2*i],[-1]) #flatten weights 
-            grads_b_1d = tf.reshape(grads[2*i+1],[-1]) #flatten biases
-
-            grads_1d = tf.concat([grads_1d, grads_w_1d], 0) #concat grad_weights 
-            grads_1d = tf.concat([grads_1d, grads_b_1d], 0) #concat grad_biases
-
-        return loss_val.numpy(), grads_1d.numpy()
-    
-    def optimizer_callback(self,parameters):
-        
-        psi_and_p = self.evaluate(X_train)
-        x=X_train[:,0]
-        
-        y=X_train[:,1]
-        psi = psi_and_p[:,0:1]
-        p = psi_and_p[:,1:2]
-        
-        xtemp=tf.Variable(x, trainable=False)
-        ytemp=tf.Variable(y, trainable=False)
-        with tf.GradientTape() as tape:
-            tape.watch(xtemp)
-            tape.watch(ytemp)
-            u = tape.gradient(psi, y)[0]
-            v = -tape.gradient(psi, x)[0] 
-            
-        del tape
-        
-        loss_value, loss_u, loss_f = self.loss(X_train, u, v)
-        
-        
-        tf.print(loss_value, loss_u, loss_f)
-        
     def adaptive_gradients(self):
         
-        x=X_train[:,0]
-        y=X_train[:,1]
-        xtemp=tf.Variable(x, trainable=False)
-        ytemp=tf.Variable(y, trainable=False)
-        with tf.GradientTape(persistent=True) as tape:
-            tape.watch(ytemp)
-            tape.watch(xtemp)
-            psi_and_p= self.evaluate(xtemp,ytemp)
-            psi = psi_and_p[:,0:1]
-
-        v = -tape.gradient(psi, xtemp)
-        u = tape.gradient(psi, ytemp)
-        del tape        
-            
-        
-
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(self.W)
             tape.watch(self.lambda_1)
-            loss_val, loss_u, loss_f = self.loss(X_train, u, v)
-
+            loss_val, loss_ph, loss_data = self.loss(X_train)
+########this takes time#####
         grads = tape.gradient(loss_val,self.W)
-        gradslbd = tape.gradient(loss_val,self.lambda_1)
 
+        gradslbd = tape.gradient(loss_ph,self.lambda_1)
         del tape
-        
-
-        return loss_val, grads, gradslbd,loss_u,loss_f
+##############
+        return loss_val, grads, gradslbd,loss_ph,loss_data
     
     
 PINN = Sequentialmodel(layers)
@@ -324,7 +231,7 @@ PINN = Sequentialmodel(layers)
 start_time = time.time() 
 
 
-num_epochs = 1000
+num_epochs = 20000
 
 save=np.zeros(num_epochs)
 savelbd=np.zeros(num_epochs)
@@ -344,10 +251,10 @@ for epoch in range(num_epochs):
 
     
         loss_value, grads, gradslbd,loss_u,loss_ph= PINN.adaptive_gradients()
-        save[epoch]=tf.get_static_value(loss_value)
 
         if epoch % 10 == 0:
             print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'#########')
+        
         loss_file = open("loss.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
                             f'{loss_ph:.3e}'+" "+\
@@ -361,13 +268,6 @@ for epoch in range(num_epochs):
         
         for i in range((len(layers)-1)*2-1):
             optimizer.apply_gradients(zip([grads[i]], [PINN.W[i]]))
-
-
-
-
-
-
-
 
      #gradient descent weights 
 init_params = PINN.get_weights().numpy()
