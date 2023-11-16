@@ -4,7 +4,7 @@ import time
 import matplotlib.pyplot as plt
 
 
-N_train = 200
+N_train = 401
    
 layers = [2, 16, 16, 16, 16, 2]
 
@@ -61,8 +61,6 @@ U0 = 1.e-4
 
 coeff_k = D / (U0 * 0.01 / max_u)
 
-np.savetxt("test.dat", u_train)
-np.savetxt("test2.dat", v_train)
 
 X_train = np.zeros((N_train,2))
 for l in range(0, N_train) :
@@ -115,9 +113,9 @@ class Sequentialmodel(tf.Module):
         x=tf.stack([x,y],axis=1)
         x = (x-lb)/(ub-lb)
         
-        a = x
+
         i=0
-        a=tf.cast(a, dtype=tf.float32)
+        a=tf.cast(x, dtype=tf.float32)
         for i in range(len(layers)-2):
             
             z = tf.add(tf.matmul(a, self.W[2*i]), self.W[2*i+1])
@@ -192,12 +190,12 @@ class Sequentialmodel(tf.Module):
             sig12 = 2. * eta * S12
             sig22 = 2. * eta * S22
 
-######this takes time#####
+
         sig11_x = tape.gradient(sig11, x)
         sig12_x = tape.gradient(sig12, x)
         sig12_y = tape.gradient(sig12, y)
         sig22_y = tape.gradient(sig22, y)
-######this take time #####
+
         del tape
 
         eps = 1.e-6
@@ -207,7 +205,10 @@ class Sequentialmodel(tf.Module):
         loss_phy = 0.001 * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
         loss_data = tf.reduce_sum(tf.square(u_train - u)) + tf.reduce_sum(tf.square(v_train - v))
         losstot=loss_phy+loss_data
-        return losstot,loss_phy,loss_data
+        
+        output=[p,u,v,gammap]
+        
+        return losstot,loss_phy,loss_data, output
     
     @tf.function   
     def adaptive_gradients(self):
@@ -215,14 +216,14 @@ class Sequentialmodel(tf.Module):
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(self.W)
             tape.watch(self.lambda_1)
-            loss_val, loss_ph, loss_data = self.loss(X_train)
-########this takes time#####
+            loss_val, loss_ph, loss_data,output = self.loss(X_train)
+
         grads = tape.gradient(loss_val,self.W)
 
         gradslbd = tape.gradient(loss_ph,self.lambda_1)
         del tape
-##############
-        return loss_val, grads, gradslbd,loss_ph,loss_data
+
+        return loss_val, grads, gradslbd,loss_ph,loss_data, output
     
     
 PINN = Sequentialmodel(layers)
@@ -230,13 +231,20 @@ PINN = Sequentialmodel(layers)
 start_time = time.time() 
 
 
-num_epochs = 1000
+num_epochs = 100000
 
 save=np.zeros(num_epochs)
 savelbd=np.zeros(num_epochs)
-loss_file = open("loss.dat","w")
+
+lossfile=f'loss{N_train}'
+lbdfile=f'lbd{N_train}'
+outputfile='output'
+
+loss_file = open(f"output/{lossfile}.dat","w")
 loss_file.close()
-loss_file = open("lbd.dat","w")
+loss_file = open(f"output/{lbdfile}.dat","w")
+loss_file.close()
+loss_file = open(f"output{outputfile}.dat","w")
 loss_file.close()
 
 learn1=0.001
@@ -244,29 +252,26 @@ learn2=0.001
 optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=learn1   , epsilon=1e-07)
 optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
 
-
+print('§§§§§§§§§',"Ntrain:",N_train,'§§§§§§§§§')
 for epoch in range(num_epochs):
     
 
-        loss_value, grads, gradslbd,loss_u,loss_ph= PINN.adaptive_gradients()
+        loss_value, grads, gradslbd,loss_u,loss_ph, output= PINN.adaptive_gradients()
 
-        if epoch % 10 == 0:
+        if epoch % 1000 == 0:
             print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'#########')
-        
-        loss_file = open("loss.dat","a")
+            
+        loss_file = open(f"output/{lossfile}.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
                             f'{loss_ph:.3e}'+" "+\
                             f'{loss_value:.3e}'+"\n")
         loss_file.close()
-        lbd_file = open("lbd.dat","a") 
+        lbd_file = open(f"output/{lbdfile}.dat","a") 
         lbd_file.write(f'{PINN.lambda_1.numpy()[0]}'+"\n") 
         lbd_file.close()        
-        tim1=time.time()
         optimizer_lbd1.apply_gradients(zip([gradslbd], [PINN.lambda_1]))
-        tim2=time.time()
         for i in range((len(layers)-1)*2-1):
             optimizer.apply_gradients(zip([grads[i]], [PINN.W[i]]))
-        rime3=time.time()
      #gradient descent weights 
 init_params = PINN.get_weights().numpy()
 
