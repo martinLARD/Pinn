@@ -109,6 +109,7 @@ plt.title('$\lambda$ with different nbr of layers')
 plt.legend()
 plt.savefig("CV_lbd_layers.png")
 plt.show()
+plt.close()
 
 dlbd1 = np.loadtxt(f'output/loss4008L.dat').T
 dlbd2 = np.loadtxt(f'output/loss4004L.dat').T
@@ -121,5 +122,6 @@ plt.title('loss with different nbr of Layers')
 plt.yscale('log')
 plt.legend()
 plt.savefig("loss_layers.png")
+plt.close()
 plt.show()
 
