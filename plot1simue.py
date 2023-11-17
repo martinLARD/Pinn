@@ -107,6 +107,7 @@ plt.plot(np.linspace(0,len(dlbd1),len(dlbd1)),dlbd2,label="4 Layers")
 plt.plot(np.linspace(0,len(dlbd1),len(dlbd1)),dlbd3,label="6 Layers (Default)")
 plt.title('$\lambda$ with different nbr of layers')
 plt.legend()
+plt.savefig("CV_lbd_layers.png")
 plt.show()
 
 dlbd1 = np.loadtxt(f'output/loss4008L.dat').T
@@ -119,6 +120,6 @@ plt.plot(np.linspace(0,len(dlbd1[2]),len(dlbd1[2])),dlbd3[2],label="6 Layers (De
 plt.title('loss with different nbr of Layers')
 plt.yscale('log')
 plt.legend()
+plt.savefig("loss_layers.png")
 plt.show()
 
-df1=np.loadtxt(f'output/lbd{i}.dat').T
