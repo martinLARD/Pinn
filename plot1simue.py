@@ -84,6 +84,7 @@ plt.plot(np.linspace(0,len(dlbd1),len(dlbd1)),dlbd2,label="f_phy same f_data")
 plt.plot(np.linspace(0,len(dlbd1),len(dlbd1)),dlbd3,label="f_phy*0.001")
 plt.title('$\lambda$ with different weights for loss fct')
 plt.legend()
+plt.xlabel("Epochs")
 plt.show()
 
 dlbd1 = np.loadtxt(f'output/loss400datadown.dat').T
@@ -96,6 +97,7 @@ plt.plot(np.linspace(0,len(dlbd1[2]),len(dlbd1[2])),dlbd3[2],label="f_phy*0.001"
 plt.title('loss with different weights for loss fct')
 plt.yscale('log')
 plt.legend()
+plt.xlabel("Epochs")
 plt.close()
 plt.show()
 
@@ -109,6 +111,7 @@ plt.plot(np.linspace(0,len(dlbd1),len(dlbd1)),dlbd3,label="6 Layers (Default)")
 plt.title('$\lambda$ with different nbr of layers')
 plt.legend()
 plt.savefig("CV_lbd_layers.png")
+plt.xlabel('Epoch')
 plt.close()
 plt.show()
 
@@ -119,11 +122,36 @@ dlbd3 = np.loadtxt(f'output/loss400.dat').T
 
 plt.plot(np.linspace(0,len(dlbd1[0]),len(dlbd1[0])),dlbd1[2],label="8 Layers")
 plt.plot(np.linspace(0,len(dlbd1[2]),len(dlbd1[2])),dlbd2[2],label="4 Layers")
-plt.plot(np.linspace(0,len(dlbd1[2]),len(dlbd1[2])),dlbd3[2],label="6 Layers (Defaults")
+plt.plot(np.linspace(0,len(dlbd1[2]),len(dlbd1[2])),dlbd3[2],label="6 Layers (Default)")
+plt.plot(np.ones(len(df))*0.5,'--',label="$\lambda^*$")
+
 plt.title('loss with different nbr of Layers')
 plt.yscale('log')
 plt.legend()
+plt.xlabel('Epoch')
 plt.savefig("loss_layers.png")
 plt.close()
+plt.show()
+
+
+
+dlbd = np.loadtxt(f'output/lbd400.dat').T
+dloss = np.loadtxt(f'output/loss400.dat').T
+dlbd1 = np.loadtxt(f'output/lbd4004L.dat').T
+dloss1 = np.loadtxt(f'output/loss4004L.dat').T
+dlbd2 = np.loadtxt(f'output/lbd4008L.dat').T
+dloss2 = np.loadtxt(f'output/loss4008L.dat').T
+
+plt.scatter(dlbd[-1],dloss[2][-1],label="6 Layers (Default)")
+plt.scatter(dlbd1[-1],dloss1[2][-1],label="4 Layers")
+plt.scatter(dlbd2[-1],dloss2[2][-1],label="8 Layers")
+plt.scatter(0.5,0,label='$\lambda^*$',marker="*")
+plt.title('scatter')
+plt.xlabel('$\lambda$')
+plt.legend()
+plt.ylabel('loss')
+plt.savefig("scatter2.png")
+plt.title("scatter")
+
 plt.show()
 
