@@ -96,6 +96,7 @@ plt.plot(np.linspace(0,len(dlbd1[2]),len(dlbd1[2])),dlbd3[2],label="f_phy*0.001"
 plt.title('loss with different weights for loss fct')
 plt.yscale('log')
 plt.legend()
+plt.close()
 plt.show()
 
 
@@ -108,8 +109,9 @@ plt.plot(np.linspace(0,len(dlbd1),len(dlbd1)),dlbd3,label="6 Layers (Default)")
 plt.title('$\lambda$ with different nbr of layers')
 plt.legend()
 plt.savefig("CV_lbd_layers.png")
-plt.show()
 plt.close()
+plt.show()
+
 
 dlbd1 = np.loadtxt(f'output/loss4008L.dat').T
 dlbd2 = np.loadtxt(f'output/loss4004L.dat').T
