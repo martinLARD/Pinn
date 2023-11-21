@@ -4,7 +4,7 @@ import time
 import matplotlib.pyplot as plt
 
 
-N_train = 401
+N_train = 400
    
 layers = [2, 16, 16, 16, 16, 2]
 
@@ -138,7 +138,7 @@ class Sequentialmodel(tf.Module):
         
         return parameters_1d
     
-    def loss(self, X):
+    def loss(self, X,step):
         
         x=X[:,0]
         y=X[:,1]
@@ -202,7 +202,7 @@ class Sequentialmodel(tf.Module):
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
         f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
         
-        loss_phy = 0.001 * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
+        loss_phy = step * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
         loss_data = tf.reduce_sum(tf.square(u_train - u)) + tf.reduce_sum(tf.square(v_train - v))
         losstot=loss_phy+loss_data
         
@@ -211,12 +211,12 @@ class Sequentialmodel(tf.Module):
         return losstot,loss_phy,loss_data, output
     
     @tf.function   
-    def adaptive_gradients(self):
+    def adaptive_gradients(self,step):
         
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(self.W)
             tape.watch(self.lambda_1)
-            loss_val, loss_ph, loss_data,output = self.loss(X_train)
+            loss_val, loss_ph, loss_data,output = self.loss(X_train,step)
 
         grads = tape.gradient(loss_val,self.W)
 
@@ -251,14 +251,15 @@ learn1=0.001
 learn2=0.001
 optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=learn1   , epsilon=1e-07)
 optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
-
+step=0.001
 print('§§§§§§§§§',"Ntrain:",N_train,'§§§§§§§§§')
 for epoch in range(num_epochs):
-    
+        
 
-        loss_value, grads, gradslbd,loss_u,loss_ph, output= PINN.adaptive_gradients()
-
-        if epoch % 1000 == 0:
+        loss_value, grads, gradslbd,loss_u,loss_ph, output= PINN.adaptive_gradients(step)
+        if epoch % 5000 == 0:
+            
+            print(step)
             print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'#########')
             
         loss_file = open(f"output/{lossfile}.dat","a")
@@ -277,23 +278,7 @@ init_params = PINN.get_weights().numpy()
 
 
 
-
-# train the model with Scipy L-BFGS optimizer
-
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
 
-# print(results)
 
-# PINN.set_weights(results.x)
-
-# ''' Model Accuracy ''' 
-# u_pred = PINN.evaluate(X_u_test)
-
-# error_vec = np.linalg.norm((u-u_pred),2)/np.linalg.norm(u,2)        # Relative L2 Norm of the error (Vector)
-# print('Test Error: %.5f'  % (error_vec))
-
-# u_pred = np.reshape(u_pred,(256,100),order='F')                        # Fortran Style ,stacked column wise!
-
-# ''' Solution Plot '''
-# # solutionplot(u_pred,X_u_train,u_train)
