@@ -3,11 +3,11 @@ import pandas as pd
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-
+import scipy.optimize
 
 N_train = 400
    
-layers = [2, 16, 16, 16, 16, 2]
+layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
 data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
@@ -125,20 +125,6 @@ class Sequentialmodel(tf.Module):
         a = tf.add(tf.matmul(a, self.W[-2]), self.W[-1]) # For regression, no activation to last layer
         return a
     
-    def get_weights(self):
-
-        parameters_1d = []  # [.... W_i,b_i.....  ] 1d array
-        
-        for i in range (len(layers)-1):
-            
-            w_1d = tf.reshape(self.W[2*i],[-1])   #flatten weights 
-            b_1d = tf.reshape(self.W[2*i+1],[-1]) #flatten biases
-            
-            parameters_1d = tf.concat([parameters_1d, w_1d], 0) #concat weights 
-            parameters_1d = tf.concat([parameters_1d, b_1d], 0) #concat biases
-        
-        return parameters_1d
-    
     def loss(self, X,step):
         
         x=X[:,0]
@@ -223,8 +209,181 @@ class Sequentialmodel(tf.Module):
 
         gradslbd = tape.gradient(loss_ph,self.lambda_1)
         del tape
-
         return loss_val, grads, gradslbd,loss_ph,loss_data, output
+    
+    ##############BFGS####################
+    
+    def set_weights(self,parameters):
+                
+        for i in range (len(layers)-1):
+
+            shape_w = tf.shape(self.W[2*i]).numpy() # shape of the weight tensor
+            size_w = tf.size(self.W[2*i]).numpy() #size of the weight tensor 
+            
+            shape_b = tf.shape(self.W[2*i+1]).numpy() # shape of the bias tensor
+            size_b = tf.size(self.W[2*i+1]).numpy() #size of the bias tensor 
+                        
+            pick_w = parameters[0:size_w] #pick the weights 
+            pick_w=tf.cast(pick_w,"float32")
+            self.W[2*i].assign(tf.reshape(pick_w,shape_w)) # assign  
+            parameters = np.delete(parameters,np.arange(size_w),0) #delete 
+            
+            pick_b = parameters[0:size_b] #pick the biases 
+            pick_b=tf.cast(pick_b,"float32")
+
+            self.W[2*i+1].assign(tf.reshape(pick_b,shape_b)) # assign 
+            parameters = np.delete(parameters,np.arange(size_b),0) #delete 
+    
+    def get_weights(self):
+
+        parameters_1d = []  # [.... W_i,b_i.....  ] 1d array
+        
+        for i in range (len(layers)-1):
+            
+            w_1d = tf.reshape(self.W[2*i],[-1])   #flatten weights 
+            b_1d = tf.reshape(self.W[2*i+1],[-1]) #flatten biases
+            
+            parameters_1d = tf.concat([parameters_1d, w_1d], 0) #concat weights 
+            parameters_1d = tf.concat([parameters_1d, b_1d], 0) #concat biases
+        parameters_1d = tf.concat([parameters_1d, self.lambda_1], 0)
+        return parameters_1d
+    # def optimizerfunc(self,parameters):
+        
+    #     self.lambda_1[0].assign(parameters)
+        
+    #     with tf.GradientTape(persistent=True) as tape:
+    #         tape.watch(self.lambda_1)
+    #         loss_val = self.loss2(X_train)
+        
+    #     gradlbd = tape.gradient(loss_val,self.lambda_1)
+
+    #     del tape
+
+       
+    #     lbd_file = open(f"output/{lbdfile}.dat","a") 
+    #     lbd_file.write(f'{self.lambda_1.numpy()[0]}'+"\n") 
+    #     lbd_file.close() 
+    #     loss_val = self.loss2(X_train)
+    #     print(gradlbd.numpy())
+    #     return loss_val.numpy(), gradlbd.numpy()
+    
+    
+    def optimizerfunc(self,parameters):
+        
+        self.set_weights(parameters[:-1])
+        self.lambda_1[0].assign(parameters[-1])
+        with tf.GradientTape(persistent=True) as tape:
+            tape.watch(self.trainable_variables)
+            tape.watch(self.lambda_1)
+            loss_val, loss_u, loss_f,output = self.loss(X_train,0.001)
+            
+        grads = tape.gradient(loss_val,self.trainable_variables)
+        gradslbd = tape.gradient(loss_val,self.lambda_1)
+                
+        del tape
+        
+        grads_1d = [ ] #flatten grads 
+        
+        for i in range (len(layers)-1):
+
+            
+            grads_w_1d = tf.reshape(grads[2*i],[-1]) #flatten weights 
+            grads_b_1d = tf.reshape(grads[2*i+1],[-1]) #flatten biases
+            
+            grads_w_1d=tf.cast(grads_w_1d,dtype="float64")
+            grads_b_1d=tf.cast(grads_b_1d,dtype="float64")
+            grads_1d = tf.concat([grads_1d, grads_w_1d], 0) #concat grad_weights 
+            grads_1d = tf.concat([grads_1d, grads_b_1d], 0) #concat grad_biases
+            
+        gradslbd=tf.cast(gradslbd,dtype="float64")
+        grads_1d=tf.concat([grads_1d, gradslbd], 0)
+        
+        loss_file = open(f"output/{lossfile}.dat","a")
+        loss_file.write(f'{loss_u:.3e}'+" "+\
+                            f'{loss_f:.3e}'+" "+\
+                            f'{loss_val:.3e}'+"\n")
+        loss_file.close()
+        
+        lbd_file = open(f"output/{lbdfile}.dat","a") 
+        lbd_file.write(f'{PINN.lambda_1.numpy()[0]}'+"\n") 
+        lbd_file.close()
+        return loss_val.numpy(), grads_1d.numpy()
+    
+    def loss2(self, X):
+        
+        x=X[:,0]
+        y=X[:,1]
+        lambda_1 = self.lambda_1
+        lambda_2 = coeff_k
+    
+        psi_and_p = self.evaluate(x,y)
+        psi = psi_and_p[:,0:1]
+        p = psi_and_p[:,1:2]
+        
+
+        with tf.GradientTape(persistent=True) as tape:
+
+            tape.watch(x)
+            tape.watch(y)
+            psi_and_p= self.evaluate(x,y)
+            psi = psi_and_p[:,0:1]
+            p =  psi_and_p[:,1:2]
+            u = tape.gradient(psi, y)
+            v = -tape.gradient(psi, x)
+            
+            u_x = tape.gradient(u, x)
+            u_y = tape.gradient(u, y)
+       
+            v_x = tape.gradient(v, x)
+            v_y = tape.gradient(v, y)
+       
+            p_x = tape.gradient(p, x)
+            p_y = tape.gradient(p, y)
+        
+            S11 = u_x
+            S22 = v_y
+            S12 = 0.5 * (u_y + v_x)
+
+            gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
+        
+            gammap = tf.math.maximum(gammap, 1.e-14)
+        
+            gammap_mean = tf.math.reduce_mean(gammap)
+        
+            eta = lambda_1 * gammap**(-1.) + lambda_2
+        
+            eta = eta / lambda_2
+            S11 = S11 / gammap_mean
+            S22 = S22 / gammap_mean
+            S12 = S12 / gammap_mean
+            
+            sig11 = 2. * eta * S11
+            sig12 = 2. * eta * S12
+            sig22 = 2. * eta * S22
+
+
+        sig11_x = tape.gradient(sig11, x)
+        sig12_x = tape.gradient(sig12, x)
+        sig12_y = tape.gradient(sig12, y)
+        sig22_y = tape.gradient(sig22, y)
+
+        del tape
+
+        eps = 1.e-6
+        f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
+        f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
+        
+        loss_phy = 0.001 * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
+        loss_data = tf.reduce_sum(tf.square(u_train - u)) + tf.reduce_sum(tf.square(v_train - v))
+        losstot=loss_phy+loss_data
+        
+        loss_file = open(f"output/{lossfile}.dat","a")
+        loss_file.write(f'{loss_data:.3e}'+" "+\
+                            f'{loss_phy:.3e}'+" "+\
+                            f'{losstot:.3e}'+"\n")
+        loss_file.close()
+                
+        return losstot
     
     
 PINN = Sequentialmodel(layers)
@@ -232,15 +391,16 @@ PINN = Sequentialmodel(layers)
 start_time = time.time() 
 
 
-num_epochs = 100000
+num_epochs = 1
 
 save=np.zeros(num_epochs)
 savelbd=np.zeros(num_epochs)
 
-lossfile=f'loss{N_train}'
-lbdfile=f'lbd{N_train}'
-outputfile='output'
 
+
+lossfile=f'loss{N_train}bfgs'
+lbdfile=f'lbd{N_train}bfgs'
+outputfile='output'
 loss_file = open(f"output/{lossfile}.dat","w")
 loss_file.close()
 loss_file = open(f"output/{lbdfile}.dat","w")
@@ -253,6 +413,10 @@ learn2=0.001
 optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=learn1   , epsilon=1e-07)
 optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
 step=0.001
+
+num_epochs=30000
+eps=3e-05
+
 print('§§§§§§§§§',"Ntrain:",N_train,'§§§§§§§§§')
 for epoch in range(num_epochs):
         
@@ -260,7 +424,6 @@ for epoch in range(num_epochs):
         loss_value, grads, gradslbd,loss_u,loss_ph, output= PINN.adaptive_gradients(step)
         if epoch % 5000 == 0:
             
-            print(step)
             print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'#########')
             
         loss_file = open(f"output/{lossfile}.dat","a")
@@ -270,16 +433,25 @@ for epoch in range(num_epochs):
         loss_file.close()
         lbd_file = open(f"output/{lbdfile}.dat","a") 
         lbd_file.write(f'{PINN.lambda_1.numpy()[0]}'+"\n") 
-        lbd_file.close()        
+        lbd_file.close()
         optimizer_lbd1.apply_gradients(zip([gradslbd], [PINN.lambda_1]))
         for i in range((len(layers)-1)*2-1):
             optimizer.apply_gradients(zip([grads[i]], [PINN.W[i]]))
      #gradient descent weights 
+        if loss_value<eps:
+             break
 init_params = PINN.get_weights().numpy()
+print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'#########')
 
 
+print("launch bfgs")
+#results=scipy.optimize.minimize(PINN.optimizerfunc, x0=init_params, method='L-BFGS-B', jac= True, options={'ftol':10**-7})
+results=scipy.optimize.fmin_l_bfgs_b(PINN.optimizerfunc, x0=init_params,  factr=10e0)
+
+bfgs_file=open("output/bfgs_result.dat","w")
+bfgs_file.write(f"{results}")
+bfgs_file.close()
 
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
-
 
