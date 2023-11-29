@@ -1,41 +1,69 @@
 
-
-
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
 
 
-df = np.loadtxt('output/loss400.dat').T
-df2=np.loadtxt('output/loss400_2.dat').T
+df2=np.loadtxt('output/loss400bfgs.dat').T
 plt.title('losses')
 
 
+plt.plot(np.linspace(0,len(df2[1]),len(df2[1])),df2[2],label="loss evolve cst")
+#plt.vlines(x=26390,ymin=0,ymax=max(df2[2]),ls=':',colors='r')
 
-
-
-
-plt.plot(np.linspace(0,len(df[1]),len(df[1])),df[2],label="loss")
-plt.plot(np.linspace(0,len(df[1]),len(df[1])),df2[2],label="loss evolve")
 plt.xlabel('Epoch')
 plt.legend()
 plt.yscale("log")
-plt.savefig("lossdif.png")
-plt.close()
+plt.savefig("testloss0.png")
+
 plt.show()
+plt.close()
 
-df = np.loadtxt('output/lbd400.dat').T
-df2=np.loadtxt('output/lbd400_2.dat').T 
+
+
+df2=np.loadtxt('output/lbd400bfgs.dat').T
+
 plt.title('$\lambda_1$')
-#plt.plot(np.linspace(0,len(df[1]),len(df[1])),df[1],label="loss phy")
-plt.plot(np.linspace(0,len(df),len(df)),df2,label="evolve")
-plt.plot(np.linspace(0,len(df),len(df)),df,label="non-evolve")
+plt.plot(np.ones(len(df2))*0.75,'--',label="$\lambda^*$")
 
+plt.plot(np.linspace(0,len(df2),len(df2)),df2,label="lambda value")
+#plt.vlines(x=26390,ymin=0,ymax=1,ls=':',colors='r')
 plt.xlabel('Epoch')
 plt.legend()
+plt.savefig("testlbd.png")
 plt.show()
-plt.savefig("lbddiff.png")
+
+
+# df=np.loadtxt('/home/mlardy2/Documents/work/PINN/data_premiertest/loss400_20neur.dat').T
+
+# df1=np.loadtxt('/home/mlardy2/Documents/work/PINN/data_premiertest/loss400_10neur.dat').T
+# df2=np.loadtxt('/home/mlardy2/Documents/work/PINN/data_premiertest/loss400.dat').T
+# plt.title('losses')
+
+# plt.plot(np.linspace(0,len(df2[1]),len(df2[1])),df[0],label="20 neurones")
+# plt.plot(np.linspace(0,len(df2[1]),len(df2[1])),df1[0],label="10 neurones")
+# plt.plot(np.linspace(0,len(df2[1]),len(df2[1])),df2[0],label="loss evolve cst")
+# plt.xlabel('Epoch')
+# plt.legend()
+# plt.yscale("log")
+# plt.show()
+# plt.close()
+
+
+# df=np.loadtxt('/home/mlardy2/Documents/work/PINN/data_premiertest/lbd400_20neur.dat').T
+# df1=np.loadtxt('/home/mlardy2/Documents/work/PINN/data_premiertest/lbd400_10neur.dat').T
+# df2=np.loadtxt('/home/mlardy2/Documents/work/PINN/data_premiertest/lbd400.dat').T
+
+# plt.title('$\lambda_1$')
+# plt.plot(np.ones(len(df2))*0.5,'--',label="$\lambda^*$")
+# plt.plot(np.linspace(0,len(df2),len(df2)),df,label="20 neurones")
+# plt.plot(np.linspace(0,len(df2),len(df2)),df1,label="10 neurones")
+# plt.plot(np.linspace(0,len(df2),len(df2)),df2,label="cst")
+
+# plt.xlabel('Epoch')
+# plt.legend()
+# plt.show()
+# plt.savefig("lbddiff.png")
 
 
 # List=[50,200,600,400]

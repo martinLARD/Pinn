@@ -10,8 +10,8 @@ N_train = 400
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
-data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
-
+data = np.loadtxt("/home/mlardy2/Documents/work/simulation/snaps/Macro_select.dat") # i, j, rho, u, v
+#data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
 X = data[:,[0,1]] # shape = (N,2)
@@ -414,8 +414,8 @@ optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=learn1   , epsilon=1e-
 optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
 step=0.001
 
-num_epochs=30000
-eps=3e-05
+num_epochs=50000
+eps=2e-5
 
 print('§§§§§§§§§',"Ntrain:",N_train,'§§§§§§§§§')
 for epoch in range(num_epochs):
@@ -454,4 +454,4 @@ bfgs_file.close()
 
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
-
+print(PINN.lambda_1.numpy()[0])
