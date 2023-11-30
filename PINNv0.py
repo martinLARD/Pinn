@@ -167,9 +167,9 @@ class Sequentialmodel(tf.Module):
         
             gammap_mean = tf.math.reduce_mean(gammap)
             lambda_2=tf.cast(lambda_2, dtype=tf.float32)
-            eta = lambda_1 * gammap**(-1.) + tf.math.pow(lambda_2,n)
+            eta = lambda_1 * gammap**(-1.) + tf.math.pow(lambda_2,n)*tf.math.pow(gammap,n-1)
         
-            eta = eta / lambda_2
+            eta = eta / (tf.math.pow(lambda_2,n)*tf.math.pow(gammap,n-1))
             S11 = S11 / gammap_mean
             S22 = S22 / gammap_mean
             S12 = S12 / gammap_mean
@@ -249,22 +249,25 @@ class Sequentialmodel(tf.Module):
             parameters_1d = tf.concat([parameters_1d, w_1d], 0) #concat weights 
             parameters_1d = tf.concat([parameters_1d, b_1d], 0) #concat biases
         parameters_1d = tf.concat([parameters_1d, self.lambda_1], 0)
+        parameters_1d = tf.concat([parameters_1d, self.nval], 0)
         return parameters_1d
 
     
     
     def optimizerfunc(self,parameters):
         
-        self.set_weights(parameters[:-1])
-        self.lambda_1[0].assign(parameters[-1])
+        self.set_weights(parameters[:-2])
+        self.lambda_1[0].assign(parameters[-2])
+        self.nval[0].assign(parameters[-1])
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(self.trainable_variables)
             tape.watch(self.lambda_1)
-            loss_val, loss_u, loss_f,output,gradn = self.loss(X_train,0.001)
+            tape.watch(self.nval)
+            loss_val, loss_u, loss_f,output = self.loss(X_train,0.001)
             
         grads = tape.gradient(loss_val,self.trainable_variables)
         gradslbd = tape.gradient(loss_val,self.lambda_1)
-        gradsn = tape.gradient(loss_val,self.lambda_1)
+        gradsn = tape.gradient(loss_val,self.nval)
 
                 
         del tape
@@ -285,6 +288,9 @@ class Sequentialmodel(tf.Module):
         gradslbd=tf.cast(gradslbd,dtype="float64")
         grads_1d=tf.concat([grads_1d, gradslbd], 0)
         
+        gradslbd=tf.cast(gradsn,dtype="float64")
+        grads_1d=tf.concat([grads_1d, gradsn], 0)
+        
         loss_file = open(f"output/{lossfile}.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
                             f'{loss_f:.3e}'+" "+\
@@ -295,82 +301,6 @@ class Sequentialmodel(tf.Module):
         lbd_file.write(f'{PINN.lambda_1.numpy()[0]}'+"\n") 
         lbd_file.close()
         return loss_val.numpy(), grads_1d.numpy()
-    
-    def loss2(self, X):
-        
-        x=X[:,0]
-        y=X[:,1]
-        lambda_1 = self.lambda_1
-        lambda_2 = coeff_k
-    
-        psi_and_p = self.evaluate(x,y)
-        psi = psi_and_p[:,0:1]
-        p = psi_and_p[:,1:2]
-        
-
-        with tf.GradientTape(persistent=True) as tape:
-
-            tape.watch(x)
-            tape.watch(y)
-            psi_and_p= self.evaluate(x,y)
-            psi = psi_and_p[:,0:1]
-            p =  psi_and_p[:,1:2]
-            u = tape.gradient(psi, y)
-            v = -tape.gradient(psi, x)
-            
-            u_x = tape.gradient(u, x)
-            u_y = tape.gradient(u, y)
-       
-            v_x = tape.gradient(v, x)
-            v_y = tape.gradient(v, y)
-       
-            p_x = tape.gradient(p, x)
-            p_y = tape.gradient(p, y)
-        
-            S11 = u_x
-            S22 = v_y
-            S12 = 0.5 * (u_y + v_x)
-
-            gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
-        
-            gammap = tf.math.maximum(gammap, 1.e-14)
-        
-            gammap_mean = tf.math.reduce_mean(gammap)
-        
-            eta = lambda_1 * gammap**(-1.) + lambda_2
-        
-            eta = eta / lambda_2
-            S11 = S11 / gammap_mean
-            S22 = S22 / gammap_mean
-            S12 = S12 / gammap_mean
-            
-            sig11 = 2. * eta * S11
-            sig12 = 2. * eta * S12
-            sig22 = 2. * eta * S22
-
-
-        sig11_x = tape.gradient(sig11, x)
-        sig12_x = tape.gradient(sig12, x)
-        sig12_y = tape.gradient(sig12, y)
-        sig22_y = tape.gradient(sig22, y)
-
-        del tape
-
-        eps = 1.e-6
-        f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
-        f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
-        
-        loss_phy = 0.001 * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
-        loss_data = tf.reduce_sum(tf.square(u_train - u)) + tf.reduce_sum(tf.square(v_train - v))
-        losstot=loss_phy+loss_data
-        
-        loss_file = open(f"output/{lossfile}.dat","a")
-        loss_file.write(f'{loss_data:.3e}'+" "+\
-                            f'{loss_phy:.3e}'+" "+\
-                            f'{losstot:.3e}'+"\n")
-        loss_file.close()
-                
-        return losstot
     
     
 PINN = Sequentialmodel(layers)

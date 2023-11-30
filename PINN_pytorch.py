@@ -32,7 +32,7 @@ N_train = 200
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
-data = np.loadtxt("/home/mlardy2/Documents/work/simulation/snaps/Macro_select.dat") # i, j, rho, u, v
+data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
 
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
@@ -315,8 +315,8 @@ start_time = time.time()
 
 param = list(PINN.parameters())
 'Adam Optimizer'
-optimizer = optim.Adam(param[1:], lr=0.001, amsgrad=True)
-optimizer2 = optim.Adam([param[0]], lr=0.001, amsgrad=True)
+optimizer = optim.Adam(param[1:], lr=0.001, amsgrad=False)
+optimizer2 = optim.Adam([param[0]], lr=0.001, amsgrad=False)
 
 epoch = 30000
 eps=eps=1e-5
@@ -333,9 +333,9 @@ for i in range(epoch):
                 
         print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'#########')
                 
-    
+
     # zeroes the gradient buffers of all parameters
-    
+
 
     loss.backward()
     optimizer.step()
