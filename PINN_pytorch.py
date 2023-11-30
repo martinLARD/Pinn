@@ -4,7 +4,7 @@ from torch import Tensor                  # tensor node in the computation graph
 import torch.nn as nn                     # neural networks
 import torch.optim as optim               # optimizers e.g. gradient descent, ADAM, etc.
 
-import time.time
+import time
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,10 +12,10 @@ import matplotlib.pyplot as plt
 torch.set_default_dtype(torch.float)
 
 #PyTorch random number generator
-torch.manual_seed(1234)
+#torch.manual_seed(1234)
 
 # Random number generators in other libraries
-np.random.seed(1234)
+#np.random.seed(1234)
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -29,10 +29,10 @@ if device == 'cuda':
 
 N_train = 200
    
-layers = [2, 16, 16, 16, 16, 2]
+layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
-data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
+data = np.loadtxt("/home/mlardy2/Documents/work/simulation/snaps/Macro_select.dat") # i, j, rho, u, v
 
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
@@ -75,6 +75,8 @@ max_u = max(np.max(abs(u_train)),np.max(abs(v_train)))
 u_train = 0.01 * u_train / max_u
 v_train = 0.01 * v_train / max_u
 
+
+
 print("Velocity scaling factor C=", max_u*100.)
 
 # Fixing D and U0 defining the Bingham number
@@ -84,19 +86,17 @@ U0 = 1.e-4
 
 coeff_k = D / (U0 * 0.01 / max_u)
 
-np.savetxt("test.dat", u_train)
-np.savetxt("test2.dat", v_train)
 
 X_train = np.zeros((N_train,2))
 for l in range(0, N_train) :
     X_train[l,0] = x_train[l]
     X_train[l,1] = y_train[l]
-np.savetxt("x_train.dat", X_train)
 
 lb=X_train.min()
 ub=X_train.max()
 
-
+u_train=torch.from_numpy(u_train).to(device)
+v_train=torch.from_numpy(v_train).to(device)
 class Sequentialmodel(nn.Module):
     
     def __init__(self,layers):
@@ -104,9 +104,6 @@ class Sequentialmodel(nn.Module):
               
         'activation function'
         self.activation = nn.Tanh()
-
-        'loss function'
-        self.loss_function = nn.MSELoss(reduction ='mean')
     
         'Initialise neural network as a list using nn.Modulelist'  
         self.linears = nn.ModuleList([nn.Linear(layers[i], layers[i+1]) for i in range(len(layers)-1)])
@@ -137,15 +134,19 @@ class Sequentialmodel(nn.Module):
             # set biases to zero
             nn.init.zeros_(self.linears[i].bias.data)
             
+        self.lambda_1 = nn.Parameter(torch.ones([1], dtype=torch.float32))
     'foward pass'
-    def forward(self,x):
+    def forward(self,x,y):
         
+        
+        x=torch.stack([x,y],axis=1)
         if torch.is_tensor(x) != True:         
-            x = torch.from_numpy(x)                
+            x = torch.from_numpy(x).to(device)                
         
-        u_b = torch.from_numpy(ub).float().to(device)
-        l_b = torch.from_numpy(lb).float().to(device)
-                      
+        # u_b = torch.from_numpy(ub).float().to(device)
+        # l_b = torch.from_numpy(lb).float().to(device)
+        u_b=ub
+        l_b=lb
         #preprocessing input 
         x = (x - l_b)/(u_b - l_b) #feature scaling
         
@@ -172,35 +173,50 @@ class Sequentialmodel(nn.Module):
         
         return a
                         
-    def loss_BC(self,x,y):
+    def loss_data(self,X):
                 
-        loss_u = self.loss_function(self.forward(x,y), u_pred)
+        x_train=X[:,0]
+        y_train=X[:,1]
+        x = torch.from_numpy(x_train).to(device)
+        y = torch.from_numpy(y_train).to(device)
+
+
+        x.requires_grad = True
+        y.requires_grad = True
+        
+        psi_and_p = self.forward(x,y)
+        
+
+        psi = psi_and_p[:,[0]].T[0]
+    
+        u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True)[0]
+        v = autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True)[0]
+        
+        loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
                 
         return loss_u
     
-    def loss_PDE(self, x_train, y_train):
+    def loss_PDE(self, X):
         
+        x_train=X[:,0]
+        y_train=X[:,1]
         
         lambda_1 = self.lambda_1
         lambda_2 = coeff_k
     
-        x = x_train.clone()
-        y = y_train.clone()
+        x = torch.from_numpy(x_train).to(device)
+        y = torch.from_numpy(y_train).to(device)
                
         x.requires_grad = True
         y.requires_grad = True
         
-        psi_and_p = self.evaluate(x,y)
+        psi_and_p = self.forward(x,y)
         
-        psi = psi_and_p[:,[0]]
-        p = psi_and_p[:,[1]]
+        psi = psi_and_p[:,0:1].T[0]
+        p = psi_and_p[:,1:2].T[0]
+        u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+        v = autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         
-        u = autograd.grad(psi,y,torch.ones([x.shape[0], 1]).to(device), retain_graph=True, create_graph=True)[0]
-        v = autograd.grad(psi,x,torch.ones([x.shape[0], 1]).to(device), retain_graph=True, create_graph=True)[0]
-        
-        u_x = autograd.grad(u,x,torch.ones(x.shape).to(device), create_graph=True)[0]
-        u_y = autograd.grad(u,y,torch.ones(x.shape).to(device), create_graph=True)[0]
-
         u_x = autograd.grad(u,x,torch.ones(x.shape).to(device), create_graph=True)[0]
         u_y = autograd.grad(u,y,torch.ones(x.shape).to(device), create_graph=True)[0]
     
@@ -216,7 +232,7 @@ class Sequentialmodel(nn.Module):
     
         gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
         
-        gammap = torch.maximum(gammap, 1.e-14)
+        #gammap = torch.clamp(gammap, max=1.e-14)
         
         gammap_mean = torch.mean(gammap)
         
@@ -233,7 +249,7 @@ class Sequentialmodel(nn.Module):
             
         sig11_x = autograd.grad(sig11,x,torch.ones(x.shape).to(device), create_graph=True)[0]
         sig12_x = autograd.grad(sig12,x,torch.ones(x.shape).to(device), create_graph=True)[0]
-        sig12_y = autograd.grad(sig11,y,torch.ones(x.shape).to(device), create_graph=True)[0]
+        sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device), create_graph=True)[0]
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device), create_graph=True)[0]
         
         
@@ -242,35 +258,30 @@ class Sequentialmodel(nn.Module):
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
         f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
         
-        loss_phy = 0.001 * self.loss_function(f_u,f_hat_u)+self.loss_function(f_v,f_hat_v)
+        loss_phy = 0.001 * (torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
+        loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
+        
+        loss_file = open(f"output/{lossfile}.dat","a")
+        loss_file.write(f'{loss_u:.3e}'+" "+\
+                            f'{loss_phy:.3e}'+" "+\
+                            f'{loss_phy+loss_u:.3e}'+"\n")
+        loss_file.close()
+        
+        lbd_file = open(f"output/{lbdfile}.dat","a") 
+        lbd_file.write(f'{self.lambda_1.item()}'+"\n") 
+        lbd_file.close()
+        return loss_phy+loss_u
 
-        return loss_phy
-    
-    def loss(self,X):
-        x=
-        loss_u = self.loss_data(u_train,v_train)
-        loss_f = self.loss_PDE(x,y)
-        
-        loss_val = loss_u + loss_f
-        
-        return loss_val
-     
     'callable for optimizer'                                       
     def closure(self):
         
         optimizer.zero_grad()
         
-        loss = self.loss(X_train, u_train)
+        loss = self.loss_PDE(X_train)
         
         loss.backward()
                 
         self.iter += 1
-        
-        if self.iter % 100 == 0:
-
-            error_vec, _ = PINN.test()
-        
-            print(loss,error_vec)
 
         return loss        
 
@@ -283,6 +294,16 @@ PINN = Sequentialmodel(layers)
        
 PINN.to(device)
 
+
+lossfile=f'loss{N_train}pytorch3'
+lbdfile=f'lbd{N_train}pytorch3'
+outputfile='output'
+loss_file = open(f"output/{lossfile}.dat","w")
+loss_file.close()
+loss_file = open(f"output/{lbdfile}.dat","w")
+loss_file.close()
+loss_file = open(f"output{outputfile}.dat","w")
+loss_file.close()
 'Neural Network Summary'
 print(PINN)
 
@@ -290,52 +311,53 @@ params = list(PINN.parameters())
 
 '''Optimization'''
 
-'L-BFGS Optimizer'
-optimizer = torch.optim.LBFGS(PINN.parameters(), lr=0.1, 
-                              max_iter = 250, 
-                              max_eval = None, 
-                              tolerance_grad = 1e-05, 
-                              tolerance_change = 1e-09, 
-                              history_size = 100, 
-                              line_search_fn = 'strong_wolfe')
-
 start_time = time.time()
 
-optimizer.step(PINN.closure)
-
-
+param = list(PINN.parameters())
 'Adam Optimizer'
-optimizer = optim.Adam(PINN.parameters(), lr=0.001,betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+optimizer = optim.Adam(param[1:], lr=0.001, amsgrad=True)
+optimizer2 = optim.Adam([param[0]], lr=0.001, amsgrad=True)
 
-max_iter = 20000
-
+epoch = 30000
+eps=eps=1e-5
 start_time = time.time()
 
-for i in range(max_iter):
+for i in range(epoch):
 
-    loss = PINN.loss(X_train)
-           
-    optimizer.zero_grad()     # zeroes the gradient buffers of all parameters
+    optimizer.zero_grad()
+    optimizer2.zero_grad()
+
+    loss = PINN.loss_PDE(X_train)
     
-    loss.backward() #backprop
+    if i % 1000 == 0:
+                
+        print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'#########')
+                
+    
+    # zeroes the gradient buffers of all parameters
+    
 
+    loss.backward()
     optimizer.step()
-    
-    if i % (max_iter/10) == 0:
-
-        error_vec, _ = PINN.test()
-
-        print(loss,error_vec)
-    
+    optimizer2.step()
+    if loss.item()<eps:
+             break
     
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
+print(PINN.lambda_1.item())
+'L-BFGS Optimizer'
+optimizer = torch.optim.LBFGS(PINN.parameters(),  
+                              max_iter = 250, 
+                              max_eval = None, 
+                              tolerance_grad = 1e-20, 
+                              tolerance_change = 1e-22, 
+                              history_size = 100, 
+                              line_search_fn = 'strong_wolfe')
 
+optimizer.step(PINN.closure)
+print(PINN.lambda_1.item())
 
-''' Model Accuracy ''' 
-error_vec, u_pred = PINN.test()
-
-print('Test Error: %.5f'  % (error_vec))
 
 
 ''' Solution Plot '''
