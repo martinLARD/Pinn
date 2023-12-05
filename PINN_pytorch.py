@@ -27,7 +27,7 @@ if device == 'cuda':
     
     
 
-N_train = 200
+N_train = 400
    
 layers = [2, 20, 20, 20, 20, 2]
 
@@ -135,6 +135,8 @@ class Sequentialmodel(nn.Module):
             nn.init.zeros_(self.linears[i].bias.data)
             
         self.lambda_1 = nn.Parameter(torch.ones([1], dtype=torch.float32))
+
+        
     'foward pass'
     def forward(self,x,y):
         
@@ -172,29 +174,6 @@ class Sequentialmodel(nn.Module):
         a = self.linears[-1](a)
         
         return a
-                        
-    def loss_data(self,X):
-                
-        x_train=X[:,0]
-        y_train=X[:,1]
-        x = torch.from_numpy(x_train).to(device)
-        y = torch.from_numpy(y_train).to(device)
-
-
-        x.requires_grad = True
-        y.requires_grad = True
-        
-        psi_and_p = self.forward(x,y)
-        
-
-        psi = psi_and_p[:,[0]].T[0]
-    
-        u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True)[0]
-        v = autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True)[0]
-        
-        loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
-                
-        return loss_u
     
     def loss_PDE(self, X):
         
@@ -215,7 +194,7 @@ class Sequentialmodel(nn.Module):
         psi = psi_and_p[:,0:1].T[0]
         p = psi_and_p[:,1:2].T[0]
         u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
-        v = autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+        v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         
         u_x = autograd.grad(u,x,torch.ones(x.shape).to(device), create_graph=True)[0]
         u_y = autograd.grad(u,y,torch.ones(x.shape).to(device), create_graph=True)[0]
@@ -270,6 +249,8 @@ class Sequentialmodel(nn.Module):
         lbd_file = open(f"output/{lbdfile}.dat","a") 
         lbd_file.write(f'{self.lambda_1.item()}'+"\n") 
         lbd_file.close()
+        
+        
         return loss_phy+loss_u
 
     'callable for optimizer'                                       
@@ -285,7 +266,35 @@ class Sequentialmodel(nn.Module):
 
         return loss        
 
-
+    def lasteval(self,X):
+        x_train=X[:,0]
+        y_train=X[:,1]
+        
+    
+        x = torch.from_numpy(x_train).to(device)
+        y = torch.from_numpy(y_train).to(device)
+               
+        x.requires_grad = True
+        y.requires_grad = True
+        
+        psi_and_p = self.forward(x,y)
+        
+        psi = psi_and_p[:,0:1].T[0]
+        p = psi_and_p[:,1:2].T[0]
+        u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+        v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+        
+        for i in range(len(x)):
+            loss_file = open(f"output/{outputfile}.dat","a")
+            loss_file.write(f'{x[i]:.3e}'+" "+\
+                                f'{y[i]:.3e}'+" "+\
+                                f'{p[i]:.3e}'+" "+\
+                                f'{u[i]:.3e}'+" "+\
+                                f'{v[i]:.3e}'+"\n")
+            loss_file.close()
+        
+        
+        
 X_u_train = torch.from_numpy(X_train).float().to(device)
 
 f_hat = torch.zeros(X_u_train.shape[0],1).to(device)
@@ -297,12 +306,12 @@ PINN.to(device)
 
 lossfile=f'loss{N_train}pytorch3'
 lbdfile=f'lbd{N_train}pytorch3'
-outputfile='output'
+outputfile=f'output{N_train}pytorch3'
 loss_file = open(f"output/{lossfile}.dat","w")
 loss_file.close()
 loss_file = open(f"output/{lbdfile}.dat","w")
 loss_file.close()
-loss_file = open(f"output{outputfile}.dat","w")
+loss_file = open(f"output/{outputfile}.dat","w")
 loss_file.close()
 'Neural Network Summary'
 print(PINN)
@@ -315,17 +324,15 @@ start_time = time.time()
 
 param = list(PINN.parameters())
 'Adam Optimizer'
-optimizer = optim.Adam(param[1:], lr=0.001, amsgrad=False)
-optimizer2 = optim.Adam([param[0]], lr=0.001, amsgrad=False)
+optimizer = optim.Adam(param, lr=0.001, amsgrad=False)
 
-epoch = 30000
+epoch = 50000
 eps=eps=1e-5
 start_time = time.time()
 
 for i in range(epoch):
 
     optimizer.zero_grad()
-    optimizer2.zero_grad()
 
     loss = PINN.loss_PDE(X_train)
     
@@ -339,25 +346,27 @@ for i in range(epoch):
 
     loss.backward()
     optimizer.step()
-    optimizer2.step()
     if loss.item()<eps:
              break
-    
+         
+print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'#########')
+
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
 print(PINN.lambda_1.item())
-'L-BFGS Optimizer'
-optimizer = torch.optim.LBFGS(PINN.parameters(),  
-                              max_iter = 250, 
-                              max_eval = None, 
-                              tolerance_grad = 1e-20, 
-                              tolerance_change = 1e-22, 
-                              history_size = 100, 
-                              line_search_fn = 'strong_wolfe')
+# 'L-BFGS Optimizer'
+# optimizer = torch.optim.LBFGS(PINN.parameters(),  
+#                               max_iter = 250, 
+#                               max_eval = None, 
+#                               tolerance_grad = 1e-20, 
+#                               tolerance_change = 1e-22, 
+#                               history_size = 100, 
+#                               line_search_fn = 'strong_wolfe')
 
-optimizer.step(PINN.closure)
+# optimizer.step(PINN.closure)
 print(PINN.lambda_1.item())
 
+PINN.lasteval(X_train)
 
 
 ''' Solution Plot '''
