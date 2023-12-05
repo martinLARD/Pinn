@@ -75,8 +75,6 @@ max_u = max(np.max(abs(u_train)),np.max(abs(v_train)))
 u_train = 0.01 * u_train / max_u
 v_train = 0.01 * v_train / max_u
 
-
-
 print("Velocity scaling factor C=", max_u*100.)
 
 # Fixing D and U0 defining the Bingham number
@@ -266,13 +264,12 @@ class Sequentialmodel(nn.Module):
 
         return loss        
 
-    def lasteval(self,X):
-        x_train=X[:,0]
-        y_train=X[:,1]
+    def lasteval(self,x,y):
+
         
     
-        x = torch.from_numpy(x_train).to(device)
-        y = torch.from_numpy(y_train).to(device)
+        x = torch.from_numpy(x).to(device)
+        y = torch.from_numpy(y).to(device)
                
         x.requires_grad = True
         y.requires_grad = True
@@ -366,7 +363,7 @@ print(PINN.lambda_1.item())
 # optimizer.step(PINN.closure)
 print(PINN.lambda_1.item())
 
-PINN.lasteval(X_train)
+PINN.lasteval(x,y)
 
 
 ''' Solution Plot '''
