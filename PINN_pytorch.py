@@ -69,8 +69,10 @@ v_train = v[idx]
 
 # Normalization
 
-u_train = u_train - np.mean(u_train)
-v_train = v_train - np.mean(v_train)
+ubar=np.mean(u_train)
+vbar=np.mean(v_train)
+u_train = u_train - ubar
+v_train = v_train - vbar
 max_u = max(np.max(abs(u_train)),np.max(abs(v_train)))
 u_train = 0.01 * u_train / max_u
 v_train = 0.01 * v_train / max_u
@@ -248,7 +250,6 @@ class Sequentialmodel(nn.Module):
         lbd_file.write(f'{self.lambda_1.item()}'+"\n") 
         lbd_file.close()
         
-        
         return loss_phy+loss_u
 
     'callable for optimizer'                                       
@@ -281,6 +282,8 @@ class Sequentialmodel(nn.Module):
         u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         
+        u=u*100*max_u+ubar
+        v=v*100*max_u+vbar
         for i in range(len(x)):
             loss_file = open(f"output/{outputfile}.dat","a")
             loss_file.write(f'{x[i]:.3e}'+" "+\
@@ -301,9 +304,9 @@ PINN = Sequentialmodel(layers)
 PINN.to(device)
 
 
-lossfile=f'loss{N_train}pytorch3'
-lbdfile=f'lbd{N_train}pytorch3'
-outputfile=f'output{N_train}pytorch3'
+lossfile=f'loss{N_train}pytorch2'
+lbdfile=f'lbd{N_train}pytorch2'
+outputfile=f'output{N_train}pytorch2'
 loss_file = open(f"output/{lossfile}.dat","w")
 loss_file.close()
 loss_file = open(f"output/{lbdfile}.dat","w")
@@ -324,7 +327,7 @@ param = list(PINN.parameters())
 optimizer = optim.Adam(param, lr=0.001, amsgrad=False)
 
 epoch = 50000
-eps=eps=1e-5
+eps=1e-5
 start_time = time.time()
 
 for i in range(epoch):
@@ -351,16 +354,16 @@ print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'####
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
 print(PINN.lambda_1.item())
-# 'L-BFGS Optimizer'
-# optimizer = torch.optim.LBFGS(PINN.parameters(),  
-#                               max_iter = 250, 
-#                               max_eval = None, 
-#                               tolerance_grad = 1e-20, 
-#                               tolerance_change = 1e-22, 
-#                               history_size = 100, 
-#                               line_search_fn = 'strong_wolfe')
+'L-BFGS Optimizer'
+optimizer = torch.optim.LBFGS(PINN.parameters(),  
+                               max_iter = 250, 
+                               max_eval = None, 
+                               tolerance_grad = 1e-20, 
+                               tolerance_change = 1e-22, 
+                               history_size = 100, 
+                               line_search_fn = 'strong_wolfe')
 
-# optimizer.step(PINN.closure)
+optimizer.step(PINN.closure)
 print(PINN.lambda_1.item())
 
 PINN.lasteval(x,y)
