@@ -59,45 +59,11 @@ p = PP
 ######################################################################
 ######################## Noiseles Data ###############################
 ######################################################################
-# Training Data    
-idx = np.random.choice(N, N_train, replace=False)
 
-x_train = x[idx]
-y_train = y[idx]
-u_train = u[idx]
-v_train = v[idx]
-
-# Normalization
-
-ubar=np.mean(u_train)
-vbar=np.mean(v_train)
-u_train = u_train - ubar
-v_train = v_train - vbar
-max_u = max(np.max(abs(u_train)),np.max(abs(v_train)))
-max_utot = max(np.max(abs(u-np.mean(u))),np.max(abs(v-np.mean(v))))
-u_train = 0.01 * u_train / max_u
-v_train = 0.01 * v_train / max_u
-
-print("Velocity scaling factor C=", max_u*100.)
-
-# Fixing D and U0 defining the Bingham number
-# Arbitrary definition: with experimental data, we can use D and U0 from the data
-D = 50.
-U0 = 1.e-4
-
-coeff_k = D / (U0*0.01/max_utot )
+u=torch.from_numpy(u)
+v=torch.from_numpy(v)
 
 
-X_train = np.zeros((N_train,2))
-for l in range(0, N_train) :
-    X_train[l,0] = x_train[l]
-    X_train[l,1] = y_train[l]
-
-lb=X_train.min()
-ub=X_train.max()
-
-u_train=torch.from_numpy(u_train).to(device)
-v_train=torch.from_numpy(v_train).to(device)
 class Sequentialmodel(nn.Module):
     
     def __init__(self,layers):
@@ -176,11 +142,12 @@ class Sequentialmodel(nn.Module):
         
         return a
     
-    def loss_PDE(self, X):
+    def loss_PDE(self, x_train,y_train,u_train,v_train):
         
-        x_train=X[:,0]
-        y_train=X[:,1]
-        
+
+        #u_train= torch.from_numpy(u_train).to(device)
+            
+        #v_train= torch.from_numpy(v_train).to(device)
         lambda_1 = self.lambda_1
         lambda_2 = coeff_k
     
@@ -236,8 +203,7 @@ class Sequentialmodel(nn.Module):
         
         eps = 1.e-6
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
-        f_v = (- p_y  + sig12_x + sig22_        u=torch.from_numpy(u)
-y) / (eta * gammap / gammap_mean + eps)
+        f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
         
         loss_phy = 0.001 * (torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
@@ -254,6 +220,74 @@ y) / (eta * gammap / gammap_mean + eps)
         
         return loss_phy+loss_u
 
+
+    def loss_colloc(self, x_train,y_train,u_train,v_train):
+            
+            
+            lambda_1 = self.lambda_1
+            lambda_2 = coeff_k
+            #u_train= torch.from_numpy(u_train).to(device)
+            
+            #v_train= torch.from_numpy(v_train).to(device)
+            x = torch.from_numpy(x_train).to(device)
+            y = torch.from_numpy(y_train).to(device)
+                   
+            x.requires_grad = True
+            y.requires_grad = True
+            
+            psi_and_p = self.forward(x,y)
+            
+            psi = psi_and_p[:,0:1].T[0]
+            p = psi_and_p[:,1:2].T[0]
+            u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+            v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+            
+            u_x = autograd.grad(u,x,torch.ones(x.shape).to(device), create_graph=True)[0]
+            u_y = autograd.grad(u,y,torch.ones(x.shape).to(device), create_graph=True)[0]
+        
+            v_x = autograd.grad(v,x,torch.ones(x.shape).to(device), create_graph=True)[0]
+            v_y = autograd.grad(v,y,torch.ones(x.shape).to(device), create_graph=True)[0]
+               
+            p_x = autograd.grad(p,x,torch.ones(x.shape).to(device), create_graph=True)[0]
+            p_y = autograd.grad(p,y,torch.ones(x.shape).to(device), create_graph=True)[0]
+            
+            S11 = u_x
+            S22 = v_y
+            S12 = 0.5 * (u_y + v_x)
+        
+            gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
+            
+            #gammap = torch.clamp(gammap, max=1.e-14)
+            
+            gammap_mean = torch.mean(gammap)
+            
+            eta = lambda_1 * gammap**(-1.) + lambda_2
+            
+            eta = eta / lambda_2
+            S11 = S11 / gammap_mean
+            S22 = S22 / gammap_mean
+            S12 = S12 / gammap_mean
+                
+            sig11 = 2. * eta * S11
+            sig12 = 2. * eta * S12
+            sig22 = 2. * eta * S22
+                
+            sig11_x = autograd.grad(sig11,x,torch.ones(x.shape).to(device), create_graph=True)[0]
+            sig12_x = autograd.grad(sig12,x,torch.ones(x.shape).to(device), create_graph=True)[0]
+            sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device), create_graph=True)[0]
+            sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device), create_graph=True)[0]
+            
+            
+            
+            eps = 1.e-6
+            f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
+            f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
+
+            loss_phy = 0.001 * (torch.square(f_u) + torch.square(f_v))
+            loss_u= torch.square(u_train - u) + torch.square(v_train - v)
+            
+            
+            return loss_phy+loss_u
     'callable for optimizer'                                       
     def closure(self):
         
@@ -295,11 +329,52 @@ y) / (eta * gammap / gammap_mean + eps)
                                 f'{v[i]:.3e}'+"\n")
             loss_file.close()
         
-        
-        
-X_u_train = torch.from_numpy(X_train).float().to(device)
+# Training Data    
+idx = np.random.choice(N, N_train, replace=False)
 
-f_hat = torch.zeros(X_u_train.shape[0],1).to(device)
+x_train = x[idx]
+y_train = y[idx]
+u_train = u[idx]
+v_train = v[idx]
+
+# Normalization
+u_train=u_train.numpy()
+v_train=v_train.numpy()
+u=u.numpy()
+v=v.numpy()
+ubar=np.mean(u_train)
+vbar=np.mean(v_train)
+u_train = u_train - ubar
+v_train = v_train - vbar
+max_u = max(np.max(abs(u_train)),np.max(abs(v_train)))
+max_utot = max(np.max(abs(u-np.mean(u))),np.max(abs(v-np.mean(v))))
+u_train = 0.01 * u_train / max_u
+v_train = 0.01 * v_train / max_u
+
+print("Velocity scaling factor C=", max_u*100.)
+
+# Fixing D and U0 defining the Bingham number
+# Arbitrary definition: with experimental data, we can use D and U0 from the data
+D = 50.
+U0 = 1.e-4
+
+coeff_k = D / (U0*0.01/max_utot )
+
+
+X_train = np.zeros((N_train,2))
+for l in range(0, N_train) :
+    X_train[l,0] = x_train[l]
+    X_train[l,1] = y_train[l]
+
+lb=X_train.min()
+ub=X_train.max()
+
+u_train=torch.from_numpy(u_train).to(device)
+v_train=torch.from_numpy(v_train).to(device)
+
+
+u = torch.from_numpy(u).to(device)
+v = torch.from_numpy(v).to(device)
 
 PINN = Sequentialmodel(layers)
        
@@ -332,12 +407,61 @@ epoch = 50000
 eps=1e-5
 start_time = time.time()
 
+
+def lossS(x,y,u,v,S):
+    '''
+    RAR-D sampling
+
+    Parameters
+    ----------
+
+    Returns
+    -------
+    sampling position
+
+    '''
+    k=1
+    c=0
+    q=np.zeros(len(x))
+    q=PINN.loss_colloc(x,y,u,v)
+    q=q.cpu()
+    q=q.detach().numpy()
+    prob=q**k/sum(q**k)+c
+    return np.random.choice(len(q),S,p=prob, replace=False)
+
+S=10
 for i in range(epoch):
 
     optimizer.zero_grad()
+    loss = PINN.loss_PDE(x_train,y_train,u_train,v_train)
+    if i % 1000 ==0 and i>10000 and len(x_train)<1000:
 
-    loss = PINN.loss_PDE(X_train)
-    
+        idx2 = np.random.choice(N, 1000, replace=False)
+        q=lossS(x[idx2],y[idx2],u[idx2],v[idx2],S)
+        #idx2 = np.random.choice(N, N_train, replace=False)
+        # x_train=x_train.numpy()
+        # y_train=y_train.numpy()
+        x_train = np.concatenate((x_train,x[idx2][q]))
+        y_train = np.concatenate((y_train,y[idx2][q]))
+        plt.scatter(x_train,y_train)
+        plt.show()
+        u_train = np.concatenate((u_train.cpu(),u.cpu()[idx2][q]))
+        v_train = np.concatenate((v_train.cpu(),v.cpu()[idx2][q]))
+        ubar=np.mean(u_train)
+        vbar=np.mean(v_train)
+        u_train = u_train - ubar
+        v_train = v_train - vbar
+        u=u.cpu().numpy()
+        v=v.cpu().numpy()
+        max_u = max(np.max(abs(u_train)),np.max(abs(v_train)))
+        max_utot = max(np.max(abs(u-np.mean(u))),np.max(abs(v-np.mean(v))))
+        u=torch.from_numpy(u).to(device)
+        v=torch.from_numpy(v).to(device)
+
+        u_train = 0.01 * u_train / max_u
+        v_train = 0.01 * v_train / max_u
+        u_train=torch.from_numpy(u_train).to(device)
+        v_train=torch.from_numpy(v_train).to(device)
     if i % 1000 == 0:
                 
         print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'#########')
@@ -373,3 +497,4 @@ PINN.lasteval(x,y)
 
 ''' Solution Plot '''
 # solutionplot(u_pred,X_u_train.cpu().detach().numpy(),u_train.cpu().detach().numpy())
+

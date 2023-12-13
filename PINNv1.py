@@ -61,6 +61,8 @@ D = 50.
 U0 = 1.e-4
 
 coeff_k = D / (U0 * 0.01 / max_u)
+Re=1.e-4
+beta=1/U0
 
 
 X_train = np.zeros((N_train,2))
@@ -79,7 +81,7 @@ class Sequentialmodel(tf.Module):
         w = tf.Variable(lbd, trainable=True, name = 'lbd')
 
         self.lambda_1 = tf.Variable(tf.cast(tf.ones([1]), dtype = 'float32'), trainable = True,constraint=tf.keras.constraints.NonNeg())       
-        self.nval = tf.Variable(tf.cast(tf.ones([1]), dtype = 'float32'), trainable = True,constraint=tf.keras.constraints.NonNeg())   
+        self.nval = tf.Variable(tf.cast(tf.ones([1])*0.75, dtype = 'float32'), trainable = True,constraint=tf.keras.constraints.NonNeg())   
        
 
         self.W = []  #Weights and biases
@@ -167,9 +169,10 @@ class Sequentialmodel(tf.Module):
         
             gammap_mean = tf.math.reduce_mean(gammap)
             lambda_2=tf.cast(lambda_2, dtype=tf.float32)
-            eta = lambda_1 * gammap**(-1.) + lambda_2*tf.math.pow(gammap,n-1)
-        
-            eta = eta / (lambda_2*tf.math.pow(gammap,n-1))
+            
+            eta = lambda_1 * gammap**(-1.) + tf.math.pow(lambda_2,n)*tf.math.pow(gammap,n-1)
+
+            eta = eta / (tf.math.pow(lambda_2,n))
             S11 = S11 / gammap_mean
             S22 = S22 / gammap_mean
             S12 = S12 / gammap_mean
@@ -188,12 +191,12 @@ class Sequentialmodel(tf.Module):
 
         eps = 1.e-6
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
-        f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
+        f_v = (- p_y  + sig12_x + sig22_y) / (eta *gammap/ gammap_mean + eps)
         
         loss_phy = step * (tf.reduce_sum(tf.square(f_u)) + tf.reduce_sum(tf.square(f_v)))
         loss_data = tf.reduce_sum(tf.square(u_train - u)) + tf.reduce_sum(tf.square(v_train - v))
         losstot=loss_phy+loss_data
-        output=[p,u,v,gammap]
+        output=[p,u,v,tf.math.reduce_mean(eta)]
         
         return losstot,loss_phy,loss_data, output
     
@@ -299,8 +302,11 @@ class Sequentialmodel(tf.Module):
         lbd_file = open(f"output/{lbdfile}.dat","a") 
         lbd_file.write(f'{PINN.lambda_1.numpy()[0]}'+"\n") 
         lbd_file.close()
+        lbd_file = open(f"output/{lbdfile}.dat","a") 
+        lbd_file.write(f'{PINN.nval.numpy()[0]}'+"\n") 
+        lbd_file.close()
         return loss_val.numpy(), grads_1d.numpy()
-    
+
     
 PINN = Sequentialmodel(layers)
 
@@ -314,14 +320,17 @@ savelbd=np.zeros(num_epochs)
 
 
 
-lossfile=f'loss{N_train}bfgs'
-lbdfile=f'lbd{N_train}bfgs'
+lossfile=f'loss{N_train}bfgs2'
+lbdfile=f'lbd{N_train}bfgs2'
+nfile=f'lbd{N_train}bfgs2'
 outputfile='output'
 loss_file = open(f"output/{lossfile}.dat","w")
 loss_file.close()
 loss_file = open(f"output/{lbdfile}.dat","w")
 loss_file.close()
-loss_file = open(f"output{outputfile}.dat","w")
+loss_file = open(f"output/{outputfile}.dat","w")
+loss_file.close()
+loss_file = open(f"output/{nfile}.dat","w")
 loss_file.close()
 
 learn1=0.001
@@ -332,16 +341,15 @@ optimizer_n = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
 
 step=0.001
 
-num_epochs=50000
-eps=1e-6
+num_epochs=100000
+eps=1.5e-5
 
 print('§§§§§§§§§',"Ntrain:",N_train,'§§§§§§§§§')
 for epoch in range(num_epochs):
         
 
         loss_value, grads, gradslbd,loss_u,loss_ph, output,gradsn= PINN.adaptive_gradients(step)
-        if epoch % 100 == 0:
-            
+        if epoch % 1000 == 0:
             print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'/','n',PINN.nval.numpy()[0],'#########')
             
         loss_file = open(f"output/{lossfile}.dat","a")
@@ -351,6 +359,9 @@ for epoch in range(num_epochs):
         loss_file.close()
         lbd_file = open(f"output/{lbdfile}.dat","a") 
         lbd_file.write(f'{PINN.lambda_1.numpy()[0]}'+"\n") 
+        lbd_file.close()
+        lbd_file = open(f"output/{nfile}.dat","a") 
+        lbd_file.write(f'{PINN.nval.numpy()[0]}'+"\n") 
         lbd_file.close()
         
         
@@ -362,7 +373,7 @@ for epoch in range(num_epochs):
         if loss_value<eps:
              break
 init_params = PINN.get_weights().numpy()
-print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'#########')
+print('#########',epoch,'/','loss:',tf.get_static_value(loss_value),'/','lbd',PINN.lambda_1.numpy()[0],'/','n',PINN.nval.numpy()[0],'#########')
 
 
 print("launch bfgs")
@@ -375,4 +386,4 @@ bfgs_file.close()
 
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
-print(PINN.lambda_1.numpy()[0])
+print(PINN.lambda_1.numpy()[0],PINN.nval.numpy()[0])
