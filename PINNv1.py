@@ -10,7 +10,7 @@ N_train = 400
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
-data = np.loadtxt("/home/mlardy2/Documents/work/simulation/snaps/Macro_select.dat") # i, j, rho, u, v
+data = np.loadtxt("/home/mlardy2/Documents/work/PINN/Pinn/Macro_select_0_75.dat") # i, j, rho, u, v
 #data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
@@ -81,7 +81,7 @@ class Sequentialmodel(tf.Module):
         w = tf.Variable(lbd, trainable=True, name = 'lbd')
 
         self.lambda_1 = tf.Variable(tf.cast(tf.ones([1]), dtype = 'float32'), trainable = True,constraint=tf.keras.constraints.NonNeg())       
-        self.nval = tf.Variable(tf.cast(tf.ones([1])*0.75, dtype = 'float32'), trainable = True,constraint=tf.keras.constraints.NonNeg())   
+        self.nval = tf.Variable(tf.cast(tf.ones([1])*0.5, dtype = 'float32'), trainable = True,constraint=tf.keras.constraints.NonNeg())   
        
 
         self.W = []  #Weights and biases
@@ -320,9 +320,9 @@ savelbd=np.zeros(num_epochs)
 
 
 
-lossfile=f'loss{N_train}bfgs2'
-lbdfile=f'lbd{N_train}bfgs2'
-nfile=f'lbd{N_train}bfgs2'
+lossfile=f'loss{N_train}bfgs3'
+lbdfile=f'lbd{N_train}bfgs3'
+nfile=f'lbd{N_train}bfgs3'
 outputfile='output'
 loss_file = open(f"output/{lossfile}.dat","w")
 loss_file.close()
@@ -335,14 +335,16 @@ loss_file.close()
 
 learn1=0.001
 learn2=0.001
+learn3=0.0001
+
 optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=learn1   , epsilon=1e-07)
 optimizer_lbd1 = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
-optimizer_n = tf.keras.optimizers.Adam(learning_rate=learn2,  epsilon=1e-07)
+optimizer_n = tf.keras.optimizers.Adam(learning_rate=learn3,  epsilon=1e-07)
 
 step=0.001
 
 num_epochs=100000
-eps=1.5e-5
+eps=1e-6
 
 print('§§§§§§§§§',"Ntrain:",N_train,'§§§§§§§§§')
 for epoch in range(num_epochs):

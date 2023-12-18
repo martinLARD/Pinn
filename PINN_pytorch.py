@@ -236,8 +236,8 @@ class Sequentialmodel(nn.Module):
         
         eps = 1.e-6
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
-        f_v = (- p_y  + sig12_x + sig22_        u=torch.from_numpy(u)
-y) / (eta * gammap / gammap_mean + eps)
+        f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
+
         
         loss_phy = 0.001 * (torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))

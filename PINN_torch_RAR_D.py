@@ -32,7 +32,7 @@ N_train = 400
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
-data = np.loadtxt("Macro_select.dat") # i, j, rho, u, v
+data = np.loadtxt("Macro_select_0_75.dat") # i, j, rho, u, v
 
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
@@ -284,16 +284,16 @@ class Sequentialmodel(nn.Module):
             f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
 
             loss_phy = 0.001 * (torch.square(f_u) + torch.square(f_v))
-            loss_u= torch.square(u_train - u) + torch.square(v_train - v)
+
             
             
-            return loss_phy+loss_u
+            return loss_phy
     'callable for optimizer'                                       
     def closure(self):
         
         optimizer.zero_grad()
         
-        loss = self.loss_PDE(X_train)
+        loss = self.loss_PDE(x_train,y_train,u_train,v_train)
         
         loss.backward()
                 
@@ -403,8 +403,8 @@ param = list(PINN.parameters())
 'Adam Optimizer'
 optimizer = optim.Adam(param, lr=0.001, amsgrad=False)
 
-epoch = 50000
-eps=1e-5
+epoch = 100000
+eps=0.5e-5
 start_time = time.time()
 
 
@@ -429,13 +429,15 @@ def lossS(x,y,u,v,S):
     prob=q**k/sum(q**k)+c
     return np.random.choice(len(q),S,p=prob, replace=False)
 
-S=10
+plt.scatter(x_train,y_train)
+plt.show()
+S=5
 for i in range(epoch):
 
     optimizer.zero_grad()
     loss = PINN.loss_PDE(x_train,y_train,u_train,v_train)
-    if i % 1000 ==0 and i>10000 and len(x_train)<1000:
-
+    if i % 5000 ==0 and i>30000 and len(x_train)<1000:
+        print(i)	
         idx2 = np.random.choice(N, 1000, replace=False)
         q=lossS(x[idx2],y[idx2],u[idx2],v[idx2],S)
         #idx2 = np.random.choice(N, N_train, replace=False)
