@@ -32,13 +32,20 @@ N_train = 400
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
-#data = np.loadtxt("Macro_select_0_75.dat") # i, j, rho, u, v
+#data = np.loadtxt("/home/mlardy2/Documents/work/PINN/Pinn/Macro_select_0_75.dat") # i, j, rho, u, v
 data = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Macro_select.dat") # i, j, rho, u, v
+wall = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Markers_on_live.dat")
+wall_inf_y=wall[400:,1]
+wall_sup_y=wall[:400,1]
+wall_inf_x=wall[400:,0]
+wall_sup_x=wall[:400,0]
+# for i in range(124):
+#     wall_inf_y=wall_inf_y.append(wall[400:,1])
+#     wall_sup_y=wall_sup_y.append(wall[:400,1])
 
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
 X = data[:,[0,1]] # shape = (N,2)
-
 N = X.shape[0]
 Nx = int(np.sqrt(N))
 Ny = int(np.sqrt(N))
@@ -51,8 +58,8 @@ UU = U[:,0]
 VV = U[:,1]
 PP = P[:]
 
-x = XX# This forms a rank-2 array with a single vector component, shape=(N,1)
-y = YY
+x = XX+18# This forms a rank-2 array with a single vector component, shape=(N,1)
+y = YY+51
 u = UU
 v = VV
 p = PP
@@ -60,13 +67,41 @@ p = PP
 ######################################################################
 ######################## Noiseles Data ###############################
 ######################################################################
-# Training Data    
+# Training Data
+wavy=False
+if wavy==True:
+    ysorti=[]
+    xsorti=[]
+    usorti=[]
+    vsorti=[]
+    leps=0
+    for i in range(1,int(max(x))):
+        close=np.argmin(abs(i-wall_inf_x))
+        temp=y[x==i]
+        aa=np.logical_and(temp>wall_inf_y[close]+leps,temp<wall_sup_y[close]-leps)
+        ytemp=y[x==i][aa]
+        xtemp=x[x==i][aa]
+        utemp=u[x==i][aa]
+        vtemp=u[x==i][aa]
+        ysorti=np.concatenate((ysorti,ytemp))
+        xsorti=np.concatenate((xsorti,xtemp))
+        usorti=np.concatenate((usorti,utemp))
+        vsorti=np.concatenate((vsorti,vtemp))
+
+    N=len(ytemp)**2
 idx = np.random.choice(N, N_train, replace=False)
 
 x_train = x[idx]
 y_train = y[idx]
 u_train = u[idx]
 v_train = v[idx]
+
+
+if wavy==True:
+    x_train = xsorti[idx]
+    y_train = ysorti[idx]
+    u_train = usorti[idx]
+    v_train = vsorti[idx]
 
 # Normalization
 
@@ -88,15 +123,12 @@ U0 = 1.e-4
 
 coeff_k = D / (U0*0.01/max_u )
 
-
 X_train = np.zeros((N_train,2))
 for l in range(0, N_train) :
     X_train[l,0] = x_train[l]
     X_train[l,1] = y_train[l]
-
 lb=X_train.min()
 ub=X_train.max()
-
 u_train=torch.from_numpy(u_train).to(device)
 v_train=torch.from_numpy(v_train).to(device)
 class Sequentialmodel(nn.Module):
@@ -154,7 +186,6 @@ class Sequentialmodel(nn.Module):
         l_b=lb
         #preprocessing input 
         x = (x - l_b)/(u_b - l_b) #feature scaling
-        
         #convert to float
         a = x.float()
                         
@@ -175,7 +206,6 @@ class Sequentialmodel(nn.Module):
             a = self.activation(z)
             
         a = self.linears[-1](a)
-        
         return a
     
     def loss_PDE(self, X):
@@ -186,15 +216,12 @@ class Sequentialmodel(nn.Module):
         lambda_1 = self.lambda_1
         lambda_2 = coeff_k
         n=self.nval
-        
         x = torch.from_numpy(x_train).to(device)
         y = torch.from_numpy(y_train).to(device)
                
         x.requires_grad = True
         y.requires_grad = True
-        
         psi_and_p = self.forward(x,y)
-        
         psi = psi_and_p[:,0:1].T[0]
         p = psi_and_p[:,1:2].T[0]
         u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
@@ -208,15 +235,15 @@ class Sequentialmodel(nn.Module):
            
         p_x = autograd.grad(p,x,torch.ones(x.shape).to(device), create_graph=True)[0]
         p_y = autograd.grad(p,y,torch.ones(x.shape).to(device), create_graph=True)[0]
-        
         S11 = u_x
         S22 = v_y
         S12 = 0.5 * (u_y + v_x)
-    
+        
         gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
         
-        #gammap = torch.clamp(gammap, max=1.e-14)
-        
+
+        epsinf=torch.tensor(1.e-10)
+        gammap=torch.maximum(gammap,epsinf)
         gammap_mean = torch.mean(gammap)
         
         eta = lambda_1 * gammap**(-1.) + lambda_2**n*gammap**(n-1)
@@ -229,32 +256,29 @@ class Sequentialmodel(nn.Module):
         sig11 = 2. * eta * S11
         sig12 = 2. * eta * S12
         sig22 = 2. * eta * S22
-            
-        sig11_x = autograd.grad(sig11,x,torch.ones(x.shape).to(device), create_graph=True)[0]
-        sig12_x = autograd.grad(sig12,x,torch.ones(x.shape).to(device), create_graph=True)[0]
-        sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device), create_graph=True)[0]
-        sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device), create_graph=True)[0]
         
-        
+        sig11_x = autograd.grad(sig11,x,torch.ones(x.shape).to(device),create_graph=True)[0]
+        sig12_x = autograd.grad(sig12,x,torch.ones(x.shape).to(device),create_graph=True)[0]
+        sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
+        sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
+     
         
         eps = 1.e-6
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
         f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
-
         
         loss_phy = 0.001 * (torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
-        
-        loss_file = open(f"output/{lossfile}.dat","a")
+        loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lossfile}.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
                             f'{loss_phy:.3e}'+" "+\
                             f'{loss_phy+loss_u:.3e}'+"\n")
         loss_file.close()
         
-        lbd_file = open(f"output/{lbdfile}.dat","a") 
+        lbd_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lbdfile}.dat","a") 
         lbd_file.write(f'{self.lambda_1.item()}'+"\n") 
         lbd_file.close()
-        lbd_file = open(f"output/{nfile}.dat","a")
+        lbd_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{nfile}.dat","a")
         lbd_file.write(f'{self.nval.item()}'+"\n")
         lbd_file.close()
         
@@ -304,19 +328,6 @@ class Sequentialmodel(nn.Module):
                                 f'{v[i]:.3e}'+"\n")
             loss_file.close()
 
-class WeightClipper(object):
-
-    def __init__(self, frequency=5):
-        self.frequency = frequency
-
-    def __call__(self, module):
-        # filter the variables to get the ones you want
-        if hasattr(module, 'lambda_1'):
-            w = module.lambda_1.data
-            w = w.clamp(0,1.5)
-        if hasattr(module, 'nval'): 
-            w = module.nval.data
-            w = w.clamp(0,1)
         
         
 X_u_train = torch.from_numpy(X_train).float().to(device)
@@ -328,17 +339,18 @@ PINN = Sequentialmodel(layers)
 PINN.to(device)
 
 
-lossfile=f'loss{N_train}wavy_lbd_0_5_n_0_5'
-lbdfile=f'lbd{N_train}wavy_lbd_0_5_n_0_5'
-nfile=f'nval{N_train}wavy_lbd_0_5_n_0_5'
-outputfile=f'{N_train}wavy_lbd_0_5_n_0_5'
-loss_file = open(f"output/{lossfile}.dat","w")
+lossfile='loss_test'
+
+lbdfile='lbd_test'
+nfile='nval_test'
+outputfile='output_test'
+loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lossfile}.dat","w")
 loss_file.close()
-loss_file = open(f"output/{lbdfile}.dat","w")
+loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lbdfile}.dat","w")
 loss_file.close()
-loss_file = open(f"output/{outputfile}.dat","w")
+loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{outputfile}.dat","w")
 loss_file.close()
-loss_file = open(f"output/{nfile}.dat","w")
+loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{nfile}.dat","w")
 loss_file.close()
 'Neural Network Summary'
 print(PINN)
@@ -352,9 +364,16 @@ start_time = time.time()
 param = list(PINN.parameters())
 'Adam Optimizer'
 optimizer = optim.Adam(param, lr=0.001, amsgrad=False)
+U0 = data[:,[3,4]] # shape = (N,2)
+P0 = data[:,2] / 3. # shape = (N)
+X0 = data[:,[0,1]]
+plt.tricontourf(X0[:,0]+18,X0[:,1]+51,U0[:,0])
 
-epoch = 100000
-eps=1e-5
+plt.scatter(x_train,y_train)
+plt.scatter(wall[:,0],wall[:,1])
+plt.show()
+epoch =100000
+eps=1e-6
 start_time = time.time()
 for i in range(epoch):
 
@@ -365,17 +384,22 @@ for i in range(epoch):
     if i % 150 == 0:
                 
         print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n',PINN.nval.item(),'#########')
-                
 
     # zeroes the gradient buffers of all parameters
 
 
     loss.backward()
     optimizer.step()
-    with torch.no_grad():
-       for param in PINN.parameters():
-         if param.size()[0]==1:
-           param.clamp_(0, 1.5)
+    for param in PINN.parameters():
+          if param.size()[0]==1:
+            #print(param)
+            with torch.no_grad():
+                param.clamp_(0, 1.5)
+            param.requires_grad
+    temp=loss.item       
+    if np.isnan(temp)==True:
+        print("Bug relaunch")
+        break
     if loss.item()<eps:
              break
          
