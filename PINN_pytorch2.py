@@ -8,6 +8,13 @@ import time
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from os.path import exists
+
+path_data='/home/mlardy2/Documents/work/simulation_wavy/data_lbd_0_05_n_1/data/'
+#path_data='/home/mlardy2/Documents/work/PINN/Pinn'
+namedata='center'
+data=f'Macro_{namedata}.dat'
+
 #Set default dtype to float32
 torch.set_default_dtype(torch.float)
 
@@ -24,28 +31,49 @@ print(device)
 
 if device == 'cuda': 
     print(torch.cuda.get_device_name()) 
-    
-    
+
+
+mainpath=f'/home/mlardy2/Documents/work/simulation_wavy/data_lbd_0_05_n_1/output/{namedata}'   
+
+nbr=np.random.randint(0,1000)
+lossfile=f'loss_resample{nbr}'
+lbdfile=f'lbd_resample{nbr}'
+nfile=f'nval_resample{nbr}'
+outputfile=f'output_resample{nbr}'
+
+file_exists = exists(f'{mainpath}/{lossfile}.dat')
+while file_exists==True:
+    print(nbr)
+    nbr+=1
+    lossfile=f'loss_resample{nbr}'
+    lbdfile=f'lbd_resample{nbr}'
+    nfile=f'nval_resample{nbr}'
+    outputfile=f'output_resample{nbr}'
+    file_exists = exists(f'{mainpath}/{lossfile}.dat')
+print(nbr)
+loss_file = open(f"{mainpath}/{lossfile}.dat",'w')
+loss_file.close()
+loss_file = open(f"{mainpath}/{lbdfile}.dat","w")
+loss_file.close()
+loss_file = open(f"{mainpath}/{nfile}.dat","w")
+loss_file.close()
+
+
+
 
 N_train = 400
    
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
-#data = np.loadtxt("/home/mlardy2/Documents/work/PINN/Pinn/Macro_select_0_75.dat") # i, j, rho, u, v
-data = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Macro_select.dat") # i, j, rho, u, v
-wall = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Markers_on_live.dat")
-wall_inf_y=wall[400:,1]
-wall_sup_y=wall[:400,1]
-wall_inf_x=wall[400:,0]
-wall_sup_x=wall[:400,0]
-# for i in range(124):
-#     wall_inf_y=wall_inf_y.append(wall[400:,1])
-#     wall_sup_y=wall_sup_y.append(wall[:400,1])
+data = np.loadtxt(f"{path_data}{data}") # i, j, rho, u, v
+#data= np.loadtxt('/home/mlardy2/Documents/work/PINN/Pinn/Macro_select_0_75.dat')
+
 
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
 X = data[:,[0,1]] # shape = (N,2)
+Shearate = data[:,-1]
 N = X.shape[0]
 Nx = int(np.sqrt(N))
 Ny = int(np.sqrt(N))
@@ -57,25 +85,33 @@ YY = X[:,1]
 UU = U[:,0]
 VV = U[:,1]
 PP = P[:]
+SS =Shearate[:]
 
-x = XX+18# This forms a rank-2 array with a single vector component, shape=(N,1)
-y = YY+51
+x = XX# This forms a rank-2 array with a single vector component, shape=(N,1)
+y = YY
 u = UU
 v = VV
 p = PP
-
+s = SS
 ######################################################################
 ######################## Noiseles Data ###############################
 ######################################################################
 # Training Data
 wavy=False
-if wavy==True:
+idx = np.random.choice(N, N_train, replace=False)
+if wavy==True: #sample only inside walls
+    wall = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Markers_on_live.dat")
+    wall_inf_y=wall[400:,1]
+    wall_sup_y=wall[:400,1]
+    wall_inf_x=wall[400:,0]
+    wall_sup_x=wall[:400,0]
     ysorti=[]
     xsorti=[]
     usorti=[]
     vsorti=[]
-    leps=0
-    for i in range(1,int(max(x))):
+    sorti=[]
+    leps=5
+    for i in range(int(max(x)/2),int(max(x))):
         close=np.argmin(abs(i-wall_inf_x))
         temp=y[x==i]
         aa=np.logical_and(temp>wall_inf_y[close]+leps,temp<wall_sup_y[close]-leps)
@@ -83,19 +119,21 @@ if wavy==True:
         xtemp=x[x==i][aa]
         utemp=u[x==i][aa]
         vtemp=u[x==i][aa]
+        stemp=s[x==i][aa]
         ysorti=np.concatenate((ysorti,ytemp))
         xsorti=np.concatenate((xsorti,xtemp))
         usorti=np.concatenate((usorti,utemp))
         vsorti=np.concatenate((vsorti,vtemp))
+        sorti=np.concatenate((sorti,stemp))
+    N=len(ysorti)
 
-    N=len(ytemp)**2
-idx = np.random.choice(N, N_train, replace=False)
+    probs=sorti/sum(sorti)
+    idx = np.random.choice(N, N_train, replace=False,p=probs)
 
 x_train = x[idx]
 y_train = y[idx]
 u_train = u[idx]
 v_train = v[idx]
-
 
 if wavy==True:
     x_train = xsorti[idx]
@@ -103,7 +141,10 @@ if wavy==True:
     u_train = usorti[idx]
     v_train = vsorti[idx]
 
+
 # Normalization
+
+
 
 ubar=np.mean(u_train)
 vbar=np.mean(v_train)
@@ -185,10 +226,9 @@ class Sequentialmodel(nn.Module):
         u_b=ub
         l_b=lb
         #preprocessing input 
-        x = (x - l_b)/(u_b - l_b) #feature scaling
+        x = (x - l_b)/(u_b - l_b)+1e-16 #feature scaling
         #convert to float
         a = x.float()
-                        
         '''     
         Alternatively:
         
@@ -200,9 +240,7 @@ class Sequentialmodel(nn.Module):
         '''
         
         for i in range(len(layers)-2):
-            
             z = self.linears[i](a)
-                        
             a = self.activation(z)
             
         a = self.linears[-1](a)
@@ -261,7 +299,6 @@ class Sequentialmodel(nn.Module):
         sig12_x = autograd.grad(sig12,x,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
-     
         
         eps = 1.e-6
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
@@ -269,16 +306,16 @@ class Sequentialmodel(nn.Module):
         
         loss_phy = 0.001 * (torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
-        loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lossfile}.dat","a")
+        loss_file = open(f"{mainpath}/{lossfile}.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
                             f'{loss_phy:.3e}'+" "+\
                             f'{loss_phy+loss_u:.3e}'+"\n")
         loss_file.close()
         
-        lbd_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lbdfile}.dat","a") 
+        lbd_file = open(f"{mainpath}/{lbdfile}.dat","a") 
         lbd_file.write(f'{self.lambda_1.item()}'+"\n") 
         lbd_file.close()
-        lbd_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{nfile}.dat","a")
+        lbd_file = open(f"{mainpath}/{nfile}.dat","a")
         lbd_file.write(f'{self.nval.item()}'+"\n")
         lbd_file.close()
         
@@ -320,7 +357,7 @@ class Sequentialmodel(nn.Module):
         u=u*100*max_u+ubar
         v=v*100*max_u+vbar
         for i in range(len(x)):
-            loss_file = open(f"output/{outputfile}.dat","a")
+            loss_file = open(f"{mainpath}/{outputfile}.dat","a")
             loss_file.write(f'{x[i]:.3e}'+" "+\
                                 f'{y[i]:.3e}'+" "+\
                                 f'{p[i]:.3e}'+" "+\
@@ -338,20 +375,6 @@ PINN = Sequentialmodel(layers)
        
 PINN.to(device)
 
-
-lossfile='loss_test'
-
-lbdfile='lbd_test'
-nfile='nval_test'
-outputfile='output_test'
-loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lossfile}.dat","w")
-loss_file.close()
-loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{lbdfile}.dat","w")
-loss_file.close()
-loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{outputfile}.dat","w")
-loss_file.close()
-loss_file = open(f"/home/mlardy2/Documents/work/PINN/Pinn/output/{nfile}.dat","w")
-loss_file.close()
 'Neural Network Summary'
 print(PINN)
 
@@ -367,44 +390,41 @@ optimizer = optim.Adam(param, lr=0.001, amsgrad=False)
 U0 = data[:,[3,4]] # shape = (N,2)
 P0 = data[:,2] / 3. # shape = (N)
 X0 = data[:,[0,1]]
-plt.tricontourf(X0[:,0]+18,X0[:,1]+51,U0[:,0])
-
-plt.scatter(x_train,y_train)
-plt.scatter(wall[:,0],wall[:,1])
-plt.show()
-epoch =100000
-eps=1e-6
+epoch =150000
+eps=5e-6
+epsvalue=1e-13
 start_time = time.time()
+lbdtemp=0
+nvaltemp=0
 for i in range(epoch):
 
     optimizer.zero_grad()
 
     loss = PINN.loss_PDE(X_train)
     
-    if i % 150 == 0:
+    if i % 200 == 0:
                 
         print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n',PINN.nval.item(),'#########')
-
+        lbdtemp=abs(lbdtemp-PINN.lambda_1.item())
+        nval=abs(nvaltemp-PINN.nval.item())
     # zeroes the gradient buffers of all parameters
 
 
     loss.backward()
     optimizer.step()
-    for param in PINN.parameters():
-          if param.size()[0]==1:
+    #for param in PINN.parameters():
+    #      if param.size()[0]==1:
             #print(param)
-            with torch.no_grad():
-                param.clamp_(0, 1.5)
-            param.requires_grad
-    temp=loss.item       
-    if np.isnan(temp)==True:
-        print("Bug relaunch")
+    #        with torch.no_grad():
+    #            param.clamp_(0, 1.5)
+    #        param.requires_grad
+    if lbdtemp+nvaltemp<epsvalue:
+        print("Stop beacause of parameters CV")
         break
     if loss.item()<eps:
              break
          
 print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n','lbd',PINN.nval.item(),'#########')
-
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
 print(PINN.lambda_1.item())
@@ -418,11 +438,21 @@ optimizer = torch.optim.LBFGS(PINN.parameters(),
                                line_search_fn = 'strong_wolfe')
 
 optimizer.step(PINN.closure)
-print(PINN.lambda_1.item())
+print(PINN.lambda_1.item(),PINN.nval.item())
 
 PINN.lasteval(x,y)
+'''
+loss_file = open(f"{mainpath}/{lossfile}.dat","a")
+loss_file.write(333+"\n")
+loss_file.close()
 
-
+lbd_file = open(f"{mainpath}/{lbdfile}.dat","a") 
+lbd_file.write(333+"\n") 
+lbd_file.close()
+lbd_file = open(f"{mainpath}/{nfile}.dat","a")
+lbd_file.write(333+"\n")
+lbd_file.close()
+'''
 ''' Solution Plot '''
 # solutionplot(u_pred,X_u_train.cpu().detach().numpy(),u_train.cpu().detach().numpy())
 
