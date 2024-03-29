@@ -10,9 +10,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from os.path import exists
 
-path_data='/home/mlardy2/Documents/work/simulation_wavy/data_lbd_0_05_n_1/data/'
+path_data='/home/mlardy2/Documents/work/simulation/snaps/'
 #path_data='/home/mlardy2/Documents/work/PINN/Pinn'
-namedata='center'
+namedata='select'
 data=f'Macro_{namedata}.dat'
 
 #Set default dtype to float32
@@ -32,14 +32,13 @@ print(device)
 if device == 'cuda': 
     print(torch.cuda.get_device_name()) 
 
-
-mainpath=f'/home/mlardy2/Documents/work/simulation_wavy/data_lbd_0_05_n_1/output/{namedata}'   
+mainpath=f'/home/mlardy2/Documents/work/PINN/Pinn/output/morepoints'   
 
 nbr=np.random.randint(0,1000)
-lossfile=f'loss_resample{nbr}'
-lbdfile=f'lbd_resample{nbr}'
-nfile=f'nval_resample{nbr}'
-outputfile=f'output_resample{nbr}'
+lossfile=f'loss_bignn{nbr}'
+lbdfile=f'lbd_bignn{nbr}'
+nfile=f'nval_bignn{nbr}'
+outputfile=f'output_bignn{nbr}'
 
 file_exists = exists(f'{mainpath}/{lossfile}.dat')
 while file_exists==True:
@@ -73,6 +72,7 @@ data = np.loadtxt(f"{path_data}{data}") # i, j, rho, u, v
 U = data[:,[3,4]] # shape = (N,2)
 P = data[:,2] / 3. # shape = (N)
 X = data[:,[0,1]] # shape = (N,2)
+Eta=data[:,-2]
 Shearate = data[:,-1]
 N = X.shape[0]
 Nx = int(np.sqrt(N))
@@ -85,19 +85,22 @@ YY = X[:,1]
 UU = U[:,0]
 VV = U[:,1]
 PP = P[:]
+EE=Eta[:]
 SS =Shearate[:]
 
+#noise=np.random.normal(0,np.mean(UU)*0.05,len(UU))
 x = XX# This forms a rank-2 array with a single vector component, shape=(N,1)
 y = YY
 u = UU
 v = VV
 p = PP
 s = SS
+eta = EE
 ######################################################################
 ######################## Noiseles Data ###############################
 ######################################################################
 # Training Data
-wavy=False
+wavy=True
 idx = np.random.choice(N, N_train, replace=False)
 if wavy==True: #sample only inside walls
     wall = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Markers_on_live.dat")
@@ -109,26 +112,31 @@ if wavy==True: #sample only inside walls
     xsorti=[]
     usorti=[]
     vsorti=[]
+    etasorti=[]
     sorti=[]
-    leps=5
-    for i in range(int(max(x)/2),int(max(x))):
+    leps=6
+    for i in range(int(min(x)),int(max(x))):
         close=np.argmin(abs(i-wall_inf_x))
         temp=y[x==i]
         aa=np.logical_and(temp>wall_inf_y[close]+leps,temp<wall_sup_y[close]-leps)
+        #c=np.logical_and(eta[x==i]<1e8,eta[x==i]>)
+        #b=np.logical_and(s[x==i]<3e-7,s[x==i]>0.7e-7)
+        #aa=np.logical_and(a,eta[x==i]<1e5)
+        #aa=np.logical_and(ab,c)
         ytemp=y[x==i][aa]
         xtemp=x[x==i][aa]
         utemp=u[x==i][aa]
-        vtemp=u[x==i][aa]
+        vtemp=v[x==i][aa]
+        etatemp=eta[x==i][aa]
         stemp=s[x==i][aa]
         ysorti=np.concatenate((ysorti,ytemp))
         xsorti=np.concatenate((xsorti,xtemp))
         usorti=np.concatenate((usorti,utemp))
         vsorti=np.concatenate((vsorti,vtemp))
+        etasorti=np.concatenate((etasorti,etatemp))
         sorti=np.concatenate((sorti,stemp))
     N=len(ysorti)
-
-    probs=sorti/sum(sorti)
-    idx = np.random.choice(N, N_train, replace=False,p=probs)
+    idx = np.random.choice(N, N_train, replace=False)
 
 x_train = x[idx]
 y_train = y[idx]
@@ -140,7 +148,17 @@ if wavy==True:
     y_train = ysorti[idx]
     u_train = usorti[idx]
     v_train = vsorti[idx]
+    eta_train = etasorti[idx]
+    s_train = sorti[idx]
 
+
+plt.scatter(xsorti,ysorti,c=sorti)
+plt.scatter(wall[:,0],wall[:,1])
+plt.scatter(x_train,y_train)
+plt.show()
+
+plt.scatter(s_train,eta_train)
+plt.show()
 
 # Normalization
 
@@ -163,7 +181,7 @@ D = 50.
 U0 = 1.e-4
 
 coeff_k = D / (U0*0.01/max_u )
-
+print("coef k",coeff_k)
 X_train = np.zeros((N_train,2))
 for l in range(0, N_train) :
     X_train[l,0] = x_train[l]
@@ -209,8 +227,8 @@ class Sequentialmodel(nn.Module):
             # set biases to zero
             nn.init.zeros_(self.linears[i].bias.data)
             
-        self.lambda_1 = nn.Parameter(torch.ones([1], dtype=torch.float32))
-        self.nval = nn.Parameter(torch.ones([1], dtype=torch.float32)*0.5)
+        self.lambda_1 = nn.Parameter(torch.ones([1], dtype=torch.float32)*0.1)
+        self.nval = nn.Parameter(torch.ones([1], dtype=torch.float32)*0.75)
 
         
     'foward pass'
@@ -285,7 +303,6 @@ class Sequentialmodel(nn.Module):
         gammap_mean = torch.mean(gammap)
         
         eta = lambda_1 * gammap**(-1.) + lambda_2**n*gammap**(n-1)
-        
         eta = eta / (lambda_2**n)
         S11 = S11 / gammap_mean
         S22 = S22 / gammap_mean
@@ -304,8 +321,10 @@ class Sequentialmodel(nn.Module):
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
         f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
         
-        loss_phy = 0.001 * (torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
+        loss_phy =  0.001*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
+        loss_pos=torch.maximum(torch.as_tensor(0),-lambda_1)+torch.maximum(torch.as_tensor(0),-n)+torch.maximum(torch.as_tensor(0),-(2-lambda_1))+torch.maximum(torch.as_tensor(0),-(2-n))
+
         loss_file = open(f"{mainpath}/{lossfile}.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
                             f'{loss_phy:.3e}'+" "+\
@@ -318,8 +337,7 @@ class Sequentialmodel(nn.Module):
         lbd_file = open(f"{mainpath}/{nfile}.dat","a")
         lbd_file.write(f'{self.nval.item()}'+"\n")
         lbd_file.close()
-        
-        return loss_phy+loss_u
+        return loss_phy+loss_u+loss_pos
 
     'callable for optimizer'                                       
     def closure(self):
@@ -333,11 +351,6 @@ class Sequentialmodel(nn.Module):
         self.iter += 1
 
         return loss        
-
-    def clipper(self):
-        temp=self.lambda_1
-        temp=temp.clamp(0,1)
-        return temp
 
     def lasteval(self,x,y):
 
@@ -354,16 +367,8 @@ class Sequentialmodel(nn.Module):
         u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         
-        u=u*100*max_u+ubar
-        v=v*100*max_u+vbar
-        for i in range(len(x)):
-            loss_file = open(f"{mainpath}/{outputfile}.dat","a")
-            loss_file.write(f'{x[i]:.3e}'+" "+\
-                                f'{y[i]:.3e}'+" "+\
-                                f'{p[i]:.3e}'+" "+\
-                                f'{u[i]:.3e}'+" "+\
-                                f'{v[i]:.3e}'+"\n")
-            loss_file.close()
+        return u,v
+
 
         
         
@@ -390,12 +395,15 @@ optimizer = optim.Adam(param, lr=0.001, amsgrad=False)
 U0 = data[:,[3,4]] # shape = (N,2)
 P0 = data[:,2] / 3. # shape = (N)
 X0 = data[:,[0,1]]
-epoch =150000
+epoch =400000
 eps=5e-6
 epsvalue=1e-13
 start_time = time.time()
 lbdtemp=0
 nvaltemp=0
+
+wall = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Markers_on_live.dat")
+
 for i in range(epoch):
 
     optimizer.zero_grad()
@@ -403,7 +411,14 @@ for i in range(epoch):
     loss = PINN.loss_PDE(X_train)
     
     if i % 200 == 0:
-                
+        us,vs = PINN.lasteval(x_train,y_train)
+        utemp=(u_train.cpu() - us.cpu())**2
+        #plt.scatter(xsorti,ysorti,c=sorti)
+        #plt.scatter(wall[:,0],wall[:,1])
+        #plt.scatter(x_train,y_train,c=(utemp.detach().numpy()))
+        #plt.colorbar(cmap=utemp.detach().numpy())
+        #plt.savefig(f"/home/mlardy2/Documents/work/PINN/Pinn/output/outputimage/image{i}.png")
+        #plt.close()        
         print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n',PINN.nval.item(),'#########')
         lbdtemp=abs(lbdtemp-PINN.lambda_1.item())
         nval=abs(nvaltemp-PINN.nval.item())
@@ -412,48 +427,36 @@ for i in range(epoch):
 
     loss.backward()
     optimizer.step()
+
+
+
+
     #for param in PINN.parameters():
     #      if param.size()[0]==1:
             #print(param)
     #        with torch.no_grad():
     #            param.clamp_(0, 1.5)
     #        param.requires_grad
-    if lbdtemp+nvaltemp<epsvalue:
-        print("Stop beacause of parameters CV")
-        break
-    if loss.item()<eps:
-             break
+    #if loss.item()<eps:
+    #         break
          
 print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n','lbd',PINN.nval.item(),'#########')
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
 print(PINN.lambda_1.item())
 'L-BFGS Optimizer'
-optimizer = torch.optim.LBFGS(PINN.parameters(),  
-                               max_iter = 250, 
-                               max_eval = None, 
-                               tolerance_grad = 1e-20, 
-                               tolerance_change = 1e-22, 
-                               history_size = 100, 
-                               line_search_fn = 'strong_wolfe')
+
+optimizer = torch.optim.LBFGS([PINN.lambda_1,PINN.nval],
+                            max_iter = 250, 
+                            max_eval = None, 
+                            tolerance_grad = 1e-20, 
+                            tolerance_change = 1e-22, 
+                            history_size = 100, 
+                            line_search_fn = 'strong_wolfe')
 
 optimizer.step(PINN.closure)
 print(PINN.lambda_1.item(),PINN.nval.item())
 
-PINN.lasteval(x,y)
-'''
-loss_file = open(f"{mainpath}/{lossfile}.dat","a")
-loss_file.write(333+"\n")
-loss_file.close()
 
-lbd_file = open(f"{mainpath}/{lbdfile}.dat","a") 
-lbd_file.write(333+"\n") 
-lbd_file.close()
-lbd_file = open(f"{mainpath}/{nfile}.dat","a")
-lbd_file.write(333+"\n")
-lbd_file.close()
-'''
-''' Solution Plot '''
-# solutionplot(u_pred,X_u_train.cpu().detach().numpy(),u_train.cpu().detach().numpy())
 
 
