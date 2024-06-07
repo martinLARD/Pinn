@@ -12,7 +12,7 @@ from os.path import exists
 
 path_data='/home/mlardy2/Documents/work/simulation/snaps/'
 #path_data='/home/mlardy2/Documents/work/PINN/Pinn'
-namedata='select'
+namedata='lbd_0_75_n_1'
 data=f'Macro_{namedata}.dat'
 
 #Set default dtype to float32
@@ -32,13 +32,13 @@ print(device)
 if device == 'cuda': 
     print(torch.cuda.get_device_name()) 
 
-mainpath=f'/home/mlardy2/Documents/work/PINN/Pinn/output/morepoints'   
+mainpath=f'/home/mlardy2/Documents/work/PINN/Pinn/output'   
 
 nbr=np.random.randint(0,1000)
-lossfile=f'loss_bignn{nbr}'
-lbdfile=f'lbd_bignn{nbr}'
-nfile=f'nval_bignn{nbr}'
-outputfile=f'output_bignn{nbr}'
+lossfile=f'loss_right{nbr}'
+lbdfile=f'lbd_right{nbr}'
+nfile=f'nval_right{nbr}'
+outputfile=f'output_right{nbr}'
 
 file_exists = exists(f'{mainpath}/{lossfile}.dat')
 while file_exists==True:
@@ -88,7 +88,7 @@ PP = P[:]
 EE=Eta[:]
 SS =Shearate[:]
 
-#noise=np.random.normal(0,np.mean(UU)*0.05,len(UU))
+noise=np.random.normal(0,np.mean(UU)*0.1,len(UU))
 x = XX# This forms a rank-2 array with a single vector component, shape=(N,1)
 y = YY
 u = UU
@@ -96,11 +96,19 @@ v = VV
 p = PP
 s = SS
 eta = EE
+plt.tricontourf(x,y,u,200)
+plt.show()
+
+u=u
+v=v
+
+plt.tricontourf(x,y,u,200)
+plt.show()
 ######################################################################
 ######################## Noiseles Data ###############################
 ######################################################################
 # Training Data
-wavy=True
+wavy=False
 idx = np.random.choice(N, N_train, replace=False)
 if wavy==True: #sample only inside walls
     wall = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Markers_on_live.dat")
@@ -143,6 +151,7 @@ y_train = y[idx]
 u_train = u[idx]
 v_train = v[idx]
 
+
 if wavy==True:
     x_train = xsorti[idx]
     y_train = ysorti[idx]
@@ -150,15 +159,6 @@ if wavy==True:
     v_train = vsorti[idx]
     eta_train = etasorti[idx]
     s_train = sorti[idx]
-
-
-plt.scatter(xsorti,ysorti,c=sorti)
-plt.scatter(wall[:,0],wall[:,1])
-plt.scatter(x_train,y_train)
-plt.show()
-
-plt.scatter(s_train,eta_train)
-plt.show()
 
 # Normalization
 
@@ -190,6 +190,7 @@ lb=X_train.min()
 ub=X_train.max()
 u_train=torch.from_numpy(u_train).to(device)
 v_train=torch.from_numpy(v_train).to(device)
+
 class Sequentialmodel(nn.Module):
     
     def __init__(self,layers):
@@ -294,7 +295,8 @@ class Sequentialmodel(nn.Module):
         S11 = u_x
         S22 = v_y
         S12 = 0.5 * (u_y + v_x)
-        
+        #print(torch.min(u_train))
+
         gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
         
 
@@ -320,7 +322,7 @@ class Sequentialmodel(nn.Module):
         eps = 1.e-6
         f_u = (- p_x + sig11_x + sig12_y) / (eta * gammap / gammap_mean + eps)
         f_v = (- p_y  + sig12_x + sig22_y) / (eta * gammap / gammap_mean + eps)
-        
+        temp=(eta * gammap / gammap_mean + eps)
         loss_phy =  0.001*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
         loss_pos=torch.maximum(torch.as_tensor(0),-lambda_1)+torch.maximum(torch.as_tensor(0),-n)+torch.maximum(torch.as_tensor(0),-(2-lambda_1))+torch.maximum(torch.as_tensor(0),-(2-n))
@@ -337,7 +339,7 @@ class Sequentialmodel(nn.Module):
         lbd_file = open(f"{mainpath}/{nfile}.dat","a")
         lbd_file.write(f'{self.nval.item()}'+"\n")
         lbd_file.close()
-        return loss_phy+loss_u+loss_pos
+        return loss_phy+loss_u+loss_pos, p/temp, (sig11_x + sig12_y)/temp
 
     'callable for optimizer'                                       
     def closure(self):
@@ -367,7 +369,7 @@ class Sequentialmodel(nn.Module):
         u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         
-        return u,v
+        return u.cpu().detach().numpy(),v.cpu().detach().numpy()
 
 
         
@@ -408,11 +410,12 @@ for i in range(epoch):
 
     optimizer.zero_grad()
 
-    loss = PINN.loss_PDE(X_train)
+    loss,p,sig = PINN.loss_PDE(X_train)
     
     if i % 200 == 0:
-        us,vs = PINN.lasteval(x_train,y_train)
-        utemp=(u_train.cpu() - us.cpu())**2
+        #print(torch.mean(p).item(),torch.mean(sig).item())
+        #us,vs = PINN.lasteval(x_train,y_train)
+        #utemp=(u_train.cpu() - us.cpu())**2
         #plt.scatter(xsorti,ysorti,c=sorti)
         #plt.scatter(wall[:,0],wall[:,1])
         #plt.scatter(x_train,y_train,c=(utemp.detach().numpy()))
@@ -429,17 +432,12 @@ for i in range(epoch):
     optimizer.step()
 
 
+u,v=PINN.lasteval(x,y)
 
-
-    #for param in PINN.parameters():
-    #      if param.size()[0]==1:
-            #print(param)
-    #        with torch.no_grad():
-    #            param.clamp_(0, 1.5)
-    #        param.requires_grad
-    #if loss.item()<eps:
-    #         break
-         
+plt.tricontourf(x,y,u,200)
+plt.colorbar(cmap=u)
+plt.savefig("nonoise.png")
+'''
 print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n','lbd',PINN.nval.item(),'#########')
 elapsed = time.time() - start_time                
 print('Training time: %.2f' % (elapsed))
@@ -456,7 +454,7 @@ optimizer = torch.optim.LBFGS([PINN.lambda_1,PINN.nval],
 
 optimizer.step(PINN.closure)
 print(PINN.lambda_1.item(),PINN.nval.item())
-
+'''
 
 
 
