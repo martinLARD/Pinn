@@ -12,7 +12,7 @@ from os.path import exists
 
 path_data='/home/mlardy2/Documents/work/simulation/snaps/'
 #path_data='/home/mlardy2/Documents/work/PINN/Pinn'
-namedata='lbd_0_75_n_1'
+namedata='select'
 data=f'Macro_{namedata}.dat'
 
 #Set default dtype to float32
@@ -274,10 +274,11 @@ class Sequentialmodel(nn.Module):
         epsinf=torch.tensor(1.e-10)
         #gammapstar=torch.maximum(gammapstar,epsinf)
         gammapstar_mean = torch.mean(gammapstar)
-        
-        eta_star = alpha_1 * gama_c**(n)*gammapstar**(-1.) + (gama_c*gammapstar)**(n-1)
+        eta_star = alpha_1 * gama_c**(n)*gammapstar**(-1.) + (gammapstar)**(n-1)
         #eta_star = alpha_1 * gammapstar**(-1.) + gama_c**(-n)*gammapstar**(n-1)
         #eta_star = eta_star / (gama_c**(-n))
+
+        etastar_mean = torch.mean(eta_star)
         S11 = S11 #/ gammapstar_mean
         S22 = S22 #/ gammapstar_mean
         S12 = S12 #/ gammapstar_mean
@@ -292,8 +293,8 @@ class Sequentialmodel(nn.Module):
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
         
         eps = 1.e-6
-        f_u = (- pstar_x* gama_c+ sig11_x + sig12_y) / (eta_star * gammapstar)
-        f_v = (- pstar_y* gama_c + sig12_x + sig22_y) / (eta_star * gammapstar)
+        f_u = (- pstar_x*0.0001 + sig11_x + sig12_y) / (eta_star * gammapstar)
+        f_v = (- pstar_y*0.0001 + sig12_x + sig22_y) / (eta_star * gammapstar) #0.0001
         temp=(eta_star * gammapstar)
         
         loss_phy =  0.001*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
@@ -315,7 +316,7 @@ class Sequentialmodel(nn.Module):
         lbd_file.write(f'{self.nval.item()}'+"\n")
         lbd_file.close()
 
-        return loss_phy+loss_u+loss_pos, pstar_x*gama_c, (sig11_x + sig12_y)
+        return loss_phy+loss_u+loss_pos, pstar_x*gammapstar_mean , (sig11_x + sig12_y)
 
     'callable for optimizer'                                       
     def closure(self):
@@ -390,3 +391,6 @@ optimizer = torch.optim.LBFGS([PINN.lambda_1,PINN.nval],
 optimizer.step(PINN.closure)
 print(PINN.lambda_1.item(),PINN.nval.item())
 '''
+
+
+
