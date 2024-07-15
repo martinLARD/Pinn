@@ -177,8 +177,8 @@ v_train=torch.from_numpy(v_train).to(device)
 Dnn = (D) #/(Xmax )
 U0nn = (U0)/max_u
 
-gama_c_nn = ( U0nn/Dnn )
-print(r"$\gamma_c_nn",(U0*0.01-ubar),(U0*1e-1))
+gama_c = ( U0nn/Dnn )
+print(r"$\gamma_c_nn",gama_c)
 
 ######################################################################
 ######################## Neural Network###############################
@@ -245,7 +245,6 @@ class Sequentialmodel(nn.Module):
         alpha_1 = self.alpha_1
         alpha_2 = self.alpha_2
 
-        gama_c = gama_c_nn
         n=self.nval
 
         x = torch.from_numpy(x_train).to(device)
