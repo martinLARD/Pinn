@@ -12,7 +12,7 @@ from os.path import exists
 
 path_data='/home/mlardy2/Documents/work/simulation/snaps/'
 #path_data='/home/mlardy2/Documents/work/PINN/Pinn'
-namedata='select'
+namedata='lbd_0_75_n_1'
 data=f'Macro_{namedata}.dat'
 
 #Set default dtype to float32
@@ -26,7 +26,7 @@ print(device)
 if device == 'cuda': 
     print(torch.cuda.get_device_name()) 
 
-mainpath=f'/home/mlardy2/Documents/work/PINN/Pinn/output'   
+mainpath=f'/home/mlardy2/Documents/work/PINN/Pinn/output/test2'   
 
 #save the output in files
 nbr=np.random.randint(0,1000)
@@ -34,6 +34,8 @@ lossfile=f'loss_right{nbr}'
 lbdfile=f'lbd_right{nbr}'
 nfile=f'nval_right{nbr}'
 outputfile=f'output_right{nbr}'
+Ufile=f'Uoutput{nbr}'
+Pfile=f'Poutput{nbr}'
 
 file_exists = exists(f'{mainpath}/{lossfile}.dat')
 while file_exists==True:
@@ -43,6 +45,8 @@ while file_exists==True:
     lbdfile=f'lbd_right{nbr}'
     nfile=f'nval_right{nbr}'
     outputfile=f'output_right{nbr}'
+    Ufile=f'Uoutput{nbr}'
+    Pfile=f'Poutput{nbr}'
     file_exists = exists(f'{mainpath}/{lossfile}.dat')
 print(nbr)
 loss_file = open(f"{mainpath}/{lossfile}.dat",'w')
@@ -56,7 +60,7 @@ loss_file.close()
 
 # Size of the NN
 N_train = 400
-   
+
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
@@ -90,6 +94,7 @@ v = VV
 p = PP
 s = SS
 eta = EE
+
 
 
 ######################################################################
@@ -167,19 +172,23 @@ U0 = 1.e-4
 
 X_train = np.zeros((N_train,2))
 for l in range(0, N_train) :
-    X_train[l,0] = x_train[l]
-    X_train[l,1] = y_train[l]
+    X_train[l,0] = x_train[l]#(x_train[l]-xmin)/(xmax-xmin)
+    X_train[l,1] = y_train[l]#(y_train[l]-ymin)/(ymax-ymin)
+
 Xmin=X_train.min()
 Xmax=X_train.max()
+
 u_train=torch.from_numpy(u_train).to(device)
 v_train=torch.from_numpy(v_train).to(device)
 
 Dnn = (D) #/(Xmax )
 U0nn = tau*(U0)/max_u
-
+V0nn=torch.mean(v_train)
 gama_c = ( U0nn/Dnn )
 print(r"$\gamma_c_nn",gama_c)
 
+plt.scatter(x,y,c=u)
+plt.show()
 ######################################################################
 ######################## Neural Network###############################
 ######################################################################
@@ -221,14 +230,14 @@ class Sequentialmodel(nn.Module):
     def forward(self,x,y):
         
         
-        x=torch.stack([x,y],axis=1)
+        X=torch.stack([x,y],axis=1)
         if torch.is_tensor(x) != True:         
-            x = torch.from_numpy(x).to(device)                
+            X = torch.from_numpy(X).to(device)                
 
         #preprocessing input 
-        x = (x - Xmin)/(Xmax - Xmin)+1e-16 #feature scaling
+        X_normed = (X - Xmin)/(Xmax - Xmin)+1e-16 #feature scaling
         #convert to float
-        a = x.float()
+        a = X_normed.float()
         
         for i in range(len(layers)-2):
             z = self.linears[i](a)
@@ -252,7 +261,7 @@ class Sequentialmodel(nn.Module):
 
         psi_and_p = self.forward(x,y)
         psi = psi_and_p[:,0:1].T[0]
-        pstar = psi_and_p[:,1:2].T[0]
+        p = psi_and_p[:,1:2].T[0]
         u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
         
@@ -262,25 +271,21 @@ class Sequentialmodel(nn.Module):
         v_x = autograd.grad(v,x,torch.ones(x.shape).to(device), create_graph=True)[0]
         v_y = autograd.grad(v,y,torch.ones(x.shape).to(device), create_graph=True)[0]
            
-        pstar_x = autograd.grad(pstar,x,torch.ones(x.shape).to(device), create_graph=True)[0]
-        pstar_y = autograd.grad(pstar,y,torch.ones(x.shape).to(device), create_graph=True)[0]
+        p_x = autograd.grad(p,x,torch.ones(x.shape).to(device), create_graph=True)[0]
+        p_y = autograd.grad(p,y,torch.ones(x.shape).to(device), create_graph=True)[0]
         S11 = u_x
         S22 = v_y
         S12 = 0.5 * (u_y + v_x)
 
-        gammapstar = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
-        
-        epsinf=torch.tensor(1.e-10)
-        #gammapstar=torch.maximum(gammapstar,epsinf)
-        gammapstar_mean = torch.mean(gammapstar)
-        eta_star = alpha_1 * gama_c**(n)*gammapstar**(-1.) + (gammapstar)**(n-1)
-        #eta_star = alpha_1 * gammapstar**(-1.) + gama_c**(-n)*gammapstar**(n-1)
-        #eta_star = eta_star / (gama_c**(-n))
+        gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)#/gama_c
 
-        etastar_mean = torch.mean(eta_star)
-        S11 = S11 #/ gammapstar_mean
-        S22 = S22 #/ gammapstar_mean
-        S12 = S12 #/ gammapstar_mean
+        gammapstar_mean = torch.mean(gammap)
+
+        eta_star = alpha_1*(gammap/gama_c)**(-1.) + (gammap/gama_c)**(n-1)
+
+        S11 = S11#/gama_c #/ gammapstar_mean
+        S22 = S22#/gama_c #/ gammapstar_mean
+        S12 = S12#/gama_c #/ gammapstar_mean
 
         sig11 = 2. * eta_star * S11
         sig12 = 2. * eta_star * S12
@@ -290,11 +295,11 @@ class Sequentialmodel(nn.Module):
         sig12_x = autograd.grad(sig12,x,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
-        
+
         eps = 1.e-6
-        f_u = (- pstar_x*0.0001 + sig11_x + sig12_y) / (eta_star * gammapstar)
-        f_v = (- pstar_y*0.0001 + sig12_x + sig22_y) / (eta_star * gammapstar) #0.0001
-        temp=(eta_star * gammapstar)
+        f_u = (- p_x*0.0001/(gama_c**n) + sig11_x/gama_c + sig12_y/gama_c) / (eta_star*gammap/gama_c )
+        f_v = (- p_y*0.0001/(gama_c**n) + sig12_x/gama_c + sig22_y/gama_c) / (eta_star*gammap/gama_c ) #0.0001
+        
         
         loss_phy =  0.001*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
@@ -315,7 +320,7 @@ class Sequentialmodel(nn.Module):
         lbd_file.write(f'{self.nval.item()}'+"\n")
         lbd_file.close()
 
-        return loss_phy+loss_u+loss_pos, pstar_x*gammapstar_mean , (sig11_x + sig12_y)
+        return loss_phy+loss_u+loss_pos, p_x , (sig11_x + sig12_y)
 
     'callable for optimizer'                                       
     def closure(self):
@@ -328,7 +333,28 @@ class Sequentialmodel(nn.Module):
                 
         self.iter += 1
 
-        return loss        
+        return loss   
+
+    def eval(self, x,y):
+        
+        x_train=X[:,0]
+        y_train=X[:,1]
+        
+        alpha_1 = self.alpha_1
+        n=self.nval
+
+        x = torch.from_numpy(x_train).to(device)
+        y = torch.from_numpy(y_train).to(device)
+        x.requires_grad = True
+        y.requires_grad = True
+
+        psi_and_p = self.forward(x,y)
+        psi = psi_and_p[:,0:1].T[0]
+        p = psi_and_p[:,1:2].T[0]
+        u = autograd.grad(psi,y,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+        v = -autograd.grad(psi,x,torch.ones(x.shape).to(device), retain_graph=True, create_graph=True)[0]
+        
+        return u, p  
 
         
         
@@ -355,15 +381,15 @@ optimizer = optim.Adam(param, lr=0.001, amsgrad=False)
 epoch =400000
 eps=5e-6
 start_time = time.time()
-
+saveoutputnn = epoch
 for i in range(epoch):
 
     optimizer.zero_grad()
 
-    loss,p,sig = PINN.loss_PDE(X_train)
+    loss,gradp,sig = PINN.loss_PDE(X_train)
     
     if i % 200 == 0:
-        print(torch.mean(p).item(),torch.mean(sig).item())
+        print('gradp moy',torch.mean(gradp).item(),'sig',torch.mean(sig).item())
         print('#########',i,'/','loss:',loss.item(),'/','a1',PINN.alpha_1.item(),'/','n',PINN.nval.item(),'#########')
 
     # zeroes the gradient buffers of all parameters
@@ -371,6 +397,14 @@ for i in range(epoch):
 
     loss.backward()
     optimizer.step()
+'''
+    if i % saveoutputnn == 0:
+        u,P =PINN.eval(x,y)
+        np.savetxt(f'{mainpath}/{Ufile}_{i}.dat',u.cpu().detach().numpy())
+        np.savetxt(f'{mainpath}/{Pfile}_{i}.dat',P.cpu().detach().numpy())
+'''
+
+
 
 '''
 print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n','lbd',PINN.nval.item(),'#########')
@@ -390,6 +424,5 @@ optimizer = torch.optim.LBFGS([PINN.lambda_1,PINN.nval],
 optimizer.step(PINN.closure)
 print(PINN.lambda_1.item(),PINN.nval.item())
 '''
-
 
 
