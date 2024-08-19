@@ -390,7 +390,7 @@ class Sequentialmodel(nn.Module):
         
         loss_phy =  10**(w-2)*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
-        loss_pos=0*(torch.maximum(torch.as_tensor(0),(0.005-alpha_1))+torch.maximum(torch.as_tensor(0),-n) )#+torch.maximum(torch.as_tensor(0),-(2-alpha_1)) +torch.maximum(torch.as_tensor(0),-(2-n)))
+        loss_pos=100*(torch.maximum(torch.as_tensor(0),(0.005-alpha_1))+torch.maximum(torch.as_tensor(0),-n) )#+torch.maximum(torch.as_tensor(0),-(2-alpha_1)) +torch.maximum(torch.as_tensor(0),-(2-n)))
         
         loss_file = open(f"{mainpath}/{lossfile}.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
