@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 from os.path import exists
 
 
-path_data='/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/'
-#path_data='/home/mlardy2/Documents/work/PINN/Pinn'
-namedata='right'
+path_data='/home/mlardy2/Documents/work/simulation/snaps/'
+#path_data = "/home/mlardy2/Documents/work/simulation/snaps/"
+namedata='lbd_0_4_n_0_9'
 data=f'Macro_{namedata}.dat'
 
 #Set default dtype to float32
@@ -62,13 +62,14 @@ loss_file.close()
 
 
 # Size of the NN
-N_train = 400
+N_train = 800
 
 layers = [2, 20, 20, 20, 20, 2]
 
 # Load Data
 data = np.loadtxt(f"{path_data}{data}") # i, j, rho, u, v
 #data= np.loadtxt('/home/mlardy2/Documents/work/PINN/Pinn/Macro_select_0_75.dat')
+
 
 
 U = data[:,[3,4]] # shape = (N,2)
@@ -90,21 +91,24 @@ PP = P[:]
 EE=Eta[:]
 SS =Shearate[:]
 
+s = SS
 x = XX # This forms a rank-2 array with a single vector component, shape=(N,1)
 y = YY
 u = UU
 v = VV
 p = PP
-s = SS
 eta = EE
- 
-
+N=len(x)
+#u=u+np.random.normal(0,np.mean(u)*0.05,len(u))
+plt.scatter(x,y,c=u)
+plt.show()
 ######################################################################
 ######################## Data Preprocessing ##########################
 ######################################################################
 # Training Data
 wavy=False
 idx = np.random.choice(N, N_train, replace=False)
+
 if wavy==True: #sample only inside walls
     print(' /!\ WAVY /!\ ')
     wall = np.loadtxt("/home/mlardy2/Documents/work/simulation_wavy/simulation/snaps/Markers_on_live.dat")
@@ -118,12 +122,21 @@ if wavy==True: #sample only inside walls
     vsorti=[]
     etasorti=[]
     sorti=[]
-    leps=6
-    for i in range(int(min(x)),int(max(x))):
+    leps=3
+    deb=55#int(min(x))
+    fin=75#int(max(x))
+    for i in range(deb,fin):
         close=np.argmin(abs(i-wall_inf_x))
         temp=y[x==i]
-        aa=np.logical_and(temp>wall_inf_y[close]+leps,temp<wall_sup_y[close]-leps)
-        #c=np.logical_and(eta[x==i]<1e8,eta[x==i]>)
+        #aa=np.logical_and(temp>=55,temp<=73)
+
+        #aa=np.logical_and(temp>wall_inf_y[close]+leps,temp<wall_sup_y[close]-leps)
+        aa=(i-62.4)**2+(temp-62.4)**2>28**2
+        aa=np.logical_and(temp>0,temp<50)
+
+        #c=np.logical_or(temp<wall_inf_y[close]+20,temp>wall_sup_y[close]-20)
+
+        #c=np.logical_and(temp<1e8,eta[x==i]>)
         #b=np.logical_and(s[x==i]<3e-7,s[x==i]>0.7e-7)
         #aa=np.logical_and(a,eta[x==i]<1e5)
         #aa=np.logical_and(ab,c)
@@ -141,16 +154,20 @@ if wavy==True: #sample only inside walls
         sorti=np.concatenate((sorti,stemp))
         dist=(abs(xsorti-np.mean(x))+abs(ysorti-np.mean(y)))
         distnorm=dist/max(dist)
-        proba=(1-(distnorm))**2/sum((1-(distnorm))**2)
+        #proba=(1-sorti/sum(sorti))**2/sum(1-(sorti/sum(sorti))**2)#(1-(distnorm))**2/sum((1-(distnorm))**2)
+        stest=np.digitize(sorti,np.linspace(min(sorti),max(sorti),int(len(xsorti)/10)))
+        proba=(stest**(1)/sum(stest**(1)))#/sum(stest/sum(stest))#/sum(1-stest**2/sum(stest**2))
+    print(len(xsorti))
     N=len(ysorti)
-    idx = np.random.choice(N, N_train, replace=False,p=proba)
-    
+    idx = np.random.choice(N, N_train, replace=False)
+
 
 x_train = x[idx]
 y_train = y[idx]
 u_train = u[idx]
 v_train = v[idx]
-
+s_train = s[idx]
+eta_train = eta[idx]
 if wavy==True:
     x_train = xsorti[idx]
     y_train = ysorti[idx]
@@ -159,29 +176,43 @@ if wavy==True:
     eta_train = etasorti[idx]
     s_train = sorti[idx]
 
+plt.scatter(x_train,y_train,c=s_train)
+if wavy==True:
+   plt.scatter(wall[:,0],wall[:,1])
+plt.show()
 
+print(max(s_train))
+plt.scatter(s_train,eta_train)
+#plt.hist(s_train,color='red',density=True)
+plt.show()
 # Normalization
 tau=1.
 # tau=1.
+
+
+uM=min(u_train)
+vM=min(v_train)
+#max_u = max(np.max(abs(u_train-ubar)),np.max(abs(v_train-vbar)))
+
+#u_train = (u_train +2*abs(uM))#*1e2
+#v_train = (v_train + 2*abs(vM))#*1e2
+
 ubar=np.mean(u_train)
 vbar=np.mean(v_train)
-u_train = u_train - ubar
-v_train = v_train - vbar
-max_u = max(np.max(abs(u_train)),np.max(abs(v_train)))
-max_utot = max(np.max(abs(u-np.mean(u))),np.max(abs(v-np.mean(v))))
-# u_train = tau*u_train / max_u
-# v_train = tau*v_train / max_u
-
-# print("Velocity scaling factor C=", max_u*100.)
-print(ubar, max_u)
-
 # Fixing D and U0 defining the Bingham number
 # Arbitrary definition: with experimental data, we can use D and U0 from the data
-D = 50.
-U0 = 1.e-4
+D = 50#np.mean(x_train)
+U0 = 1e-4#/50#vbar*10**1
 
-u_train = u_train / U0
-v_train = v_train / U0
+psi=1e-4/(u_train-ubar)
+
+
+alphareval=1e-4/U0
+u_train = (u_train-ubar) / (U0)#(psi*u_train-ubar) / U0
+v_train = (v_train-vbar) / (U0)#(psi*v_train-vbar) / U0
+print(np.mean(u_train))
+
+print(min(u_train),max(u_train))
 
 X_train = np.zeros((N_train,2))
 for l in range(0, N_train) :
@@ -195,20 +226,15 @@ x = x / D
 y = y / D
 # Simon
 
-
 Xmin=X_train.min()
 Xmax=X_train.max()
 
 u_train=torch.from_numpy(u_train).to(device)
 v_train=torch.from_numpy(v_train).to(device)
 
-# Dnn = (D) #/(Xmax )
-Dnn = 1. #/(Xmax )
-U0nn = tau*(U0)/max_u
-V0nn=torch.mean(v_train)
 # gama_c = ( U0nn/Dnn )
 gama_c = 1.
-print(r"$\gamma_c_nn",U0/D)
+print(r"$\gamma_c_nn",U0/D,alphareval)
 
 # plt.scatter(x,y,c=u)
 # plt.show()
@@ -245,7 +271,7 @@ class Sequentialmodel(nn.Module):
 
         # self.alpha_2 = nn.Parameter(torch.ones([1], dtype=torch.float32)*1.)
         
-        self.nval = nn.Parameter(torch.ones([1], dtype=torch.float32)*1.)
+        self.nval = nn.Parameter(torch.ones([1], dtype=torch.float32)*1)
         
 
         
@@ -318,7 +344,7 @@ class Sequentialmodel(nn.Module):
         sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
 
-        kappa = (U0/D) * (U0/D)**(-n)
+        kappa = 1*(U0/D) * (U0/D)**(-n)
 
         f_u = (- p_x * kappa + sig11_x + sig12_y) #/ kappa
         f_v = (- p_y * kappa + sig12_x + sig22_y) #/ kappa #0.0001
@@ -326,12 +352,11 @@ class Sequentialmodel(nn.Module):
         
         loss_phy =  (torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
-        
         w=torch.floor(torch.log10(loss_u/loss_phy))
         #print(loss_phy,loss_u)
         return w
 
-    def loss_PDE(self, X, w):
+    def loss_PDE(self, X, u_train, v_train, w):
         
         x_train=X[:,0]
         y_train=X[:,1]
@@ -368,8 +393,7 @@ class Sequentialmodel(nn.Module):
         gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)#/gama_c
 
 
-        eta_star = alpha_1*(gammap/gama_c)**(-1.) + (gammap/gama_c)**(n-1)
-        
+        eta_star = (alpha_1*(gammap/gama_c)**(-1.) + (gammap/gama_c)**(n-1))
         S11 = S11#/gama_c #/ gammapstar_mean
         S22 = S22#/gama_c #/ gammapstar_mean
         S12 = S12#/gama_c #/ gammapstar_mean
@@ -383,14 +407,14 @@ class Sequentialmodel(nn.Module):
         sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
 
-        kappa = (U0/D)**(-n)*(U0/D)# * (U0/D)**(-n)
+        kappa = 1*(U0/D)**(-n)*(U0/D)# * (U0/D)**(-n)
 
         f_u = (- p_x * kappa + sig11_x + sig12_y) #/ kappa
         f_v = (- p_y * kappa + sig12_x + sig22_y) #/ kappa #0.0001
-        
-        loss_phy =  10**(w-2)*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
+
+        loss_phy =  10**(w-1)*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
-        loss_pos=100*(torch.maximum(torch.as_tensor(0),(0.005-alpha_1))+torch.maximum(torch.as_tensor(0),-n) )#+torch.maximum(torch.as_tensor(0),-(2-alpha_1)) +torch.maximum(torch.as_tensor(0),-(2-n)))
+        loss_pos=10*(torch.maximum(torch.as_tensor(0),(-alpha_1))+torch.maximum(torch.as_tensor(0),-n))# +torch.maximum(torch.as_tensor(0),-(1.5-n)))
         
         loss_file = open(f"{mainpath}/{lossfile}.dat","a")
         loss_file.write(f'{loss_u:.3e}'+" "+\
@@ -409,7 +433,7 @@ class Sequentialmodel(nn.Module):
 
         # return loss_phy+loss_u+loss_pos, p_x , (sig11_x + sig12_y)
         # return loss_phy+loss_u, p_x , (sig11_x + sig12_y)
-        return loss_u+loss_phy+loss_pos, torch.mean(p_x), torch.mean(sig11_x)
+        return loss_u+loss_phy+loss_pos, torch.min(gammap), torch.max(gammap)
 
     'callable for optimizer'                                       
     def closure(self):
@@ -424,7 +448,7 @@ class Sequentialmodel(nn.Module):
 
         return loss   
 
-    def eval(self, x,y):
+    def eval(self, x, y):
         
         alpha_1 = self.alpha_1
         n=self.nval
@@ -461,31 +485,12 @@ class Sequentialmodel(nn.Module):
         gammap_mean = torch.mean(gammap)
 
         eta_star = alpha_1*(gammap/gama_c)**(-1.) + (gammap/gama_c)**(n-1)
-
-        S11 = S11#/gama_c #/ gammapstar_mean
-        S22 = S22#/gama_c #/ gammapstar_mean
-        S12 = S12#/gama_c #/ gammapstar_mean
-
-        sig11 = 2. * eta_star * S11 / gama_c 
-        sig12 = 2. * eta_star * S12 / gama_c 
-        sig22 = 2. * eta_star * S22 / gama_c 
-        
-        sig11_x = autograd.grad(sig11,x,torch.ones(x.shape).to(device),create_graph=True)[0]
-        sig12_x = autograd.grad(sig12,x,torch.ones(x.shape).to(device),create_graph=True)[0]
-        sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
-        sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
-
-        kappa = (U0/D) * (U0/D)**(-n)
-
-        f_u = (- p_x * kappa + sig11_x + sig12_y) #/ kappa
-        f_v = (- p_y * kappa + sig12_x + sig22_y) #/ kappa #0.0001
-
         # loss_phy =  0.001*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v)))
         
-        return u, v, p, gammap, eta_star, sig12, sig11, sig22, S12, S11, S22, f_u, f_v
+        return u, v, p, gammap, eta_star#, sig12, sig11, sig22, S12, S11, S22, f_u, f_v
         # return u, v, p, gammap, eta_star, S12, S11, S22
         
-        
+
 PINN = Sequentialmodel(layers)
        
 PINN.to(device)
@@ -505,80 +510,57 @@ start_time = time.time()
 
 param = list(PINN.parameters())
 'Adam Optimizer'
-optimizer = optim.Adam(param, lr=0.005)#, amsgrad=False)
+optimizer = optim.Adam(param, lr=0.0025)#, amsgrad=False)
 
 
-epoch =400000
+epoch =800000
 # epoch = 1
 eps=5e-6
 start_time = time.time()
 saveoutputnn = epoch
 w=PINN.weight(X_train).detach().item()
 
-print(w)
 for i in range(epoch):
 
     optimizer.zero_grad()
 
-    loss, gradp, sig = PINN.loss_PDE(X_train,w)
+    loss, gradp, sig = PINN.loss_PDE(X_train,u_train, v_train,w)
     
     if i % 200 == 0:
          print('gradp moy',torch.mean(gradp).item(),'sig',torch.mean(sig).item())
          print('#########',i,'/','loss:',loss.item(),'/','a1',PINN.alpha_1.item(),'/','n',PINN.nval.item(),'#########')
-
+    
     # zeroes the gradient buffers of all parameters
 
     loss.backward()
     optimizer.step()
-    
+    if i == 5_000_000:
+        u,v,p,gammap, eta =PINN.eval(XX/50, YY/50)
+        # print(u.item())
 
-    # if i % 100 == 0:
-    #     print(len(y),len(x))
-    #     u,v,p,gammap, eta, sig12, sig11, sig22, S12, S11, S22, f_u, f_v =PINN.eval(x,y)
-    #     # u,v,p,gammap, eta =PINN.eval(x/D,y/D)
-    #     # loss_file = open(f"{mainpath}/Macro_{i}.dat","w")
-    #     loss_file = open(f"{mainpath}/Macro.dat","w")
-    #     for j in range(len(y)):
-    #             loss_file.write(
-    #                         f'{x[j]}'+" "+\
-    #                         f'{y[j]}'+" "+\
-    #                         f'{p[j]}'+" "+\
-    #                         f'{u[j]}'+" "+\
-    #                         f'{v[j]}'+" "+\
-    #                         f'{eta[j]}'+" "+\
-    #                         f'{gammap[j]}'+" "+\
-    #                         f'{sig12[j]}'+" "+\
-    #                         f'{sig11[j]}'+" "+\
-    #                         f'{sig22[j]}'+" "+\
-    #                         f'{S12[j]}'+" "+\
-    #                         f'{S11[j]}'+" "+\
-    #                         f'{S22[j]}'+" "+\
-    #                         f'{f_u[j]}'+" "+\
-    #                         f'{f_v[j]}'+"\n")
-    #     loss_file.close()
-    #     u,v,p,gammap, eta, sig12, sig11, sig22, S12, S11, S22, f_u, f_v =PINN.eval(X_train[:,0],X_train[:,1])
-    #     loss_file = open(f"{mainpath}/Macro2.dat","w")
-    #     for j in range(len(X_train[:,0])):
-    #             loss_file.write(
-    #                         f'{X_train[j,0]}'+" "+\
-    #                         f'{X_train[j,1]}'+" "+\
-    #                         f'{p[j]}'+" "+\
-    #                         f'{u[j]}'+" "+\
-    #                         f'{v[j]}'+" "+\
-    #                         f'{eta[j]}'+" "+\
-    #                         f'{gammap[j]}'+" "+\
-    #                         f'{sig12[j]}'+" "+\
-    #                         f'{sig11[j]}'+" "+\
-    #                         f'{sig22[j]}'+" "+\
-    #                         f'{S12[j]}'+" "+\
-    #                         f'{S11[j]}'+" "+\
-    #                         f'{S22[j]}'+" "+\
-    #                         f'{f_u[j]}'+" "+\
-    #                         f'{f_v[j]}'+"\n")
-    #     loss_file.close()
+        plt.scatter(XX,YY,c=u.cpu().detach().numpy())
+        plt.show()
+'''
+    if i == 280_000:
+        print('last eval')
+        ulast=UU-np.mean(UU)
+        vlast=VV-np.mean(VV)
+        ulast=ulast/U0
+        vlast=vlast/U0
 
-
-
+        u,v,p,gammap, eta =PINN.eval(XX/50, YY/50)
+        loss_file = open(f"{mainpath}/Macrolast.dat","w")
+        for j in range(len(XX)):
+                loss_file.write(
+                            f'{XX[j]}'+" "+\
+                            f'{YY[j]}'+" "+\
+                            f'{p[j]}'+" "+\
+                            f'{u[j]}'+" "+\
+                            f'{v[j]}'+" "+\
+                            f'{eta[j]}'+" "+\
+                            f'{gammap[j]}'+"\n")
+        loss_file.close()
+'''
 '''
 print('#########',i,'/','loss:',loss.item(),'/','lbd',PINN.lambda_1.item(),'/','n','lbd',PINN.nval.item(),'#########')
 elapsed = time.time() - start_time                
