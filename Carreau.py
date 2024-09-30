@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 from os.path import exists
 
 
-path_data='/home/mlardy2/Documents/work/Carreau/snaps/'
+path_data='/home/mlardy2/Documents/work/simulation/snaps/'
 #path_data='/home/mlardy2/Documents/work/PINN/Pinn'
-namedata='25_50_01'
+namedata='lbd_0_4_n_0_9'
 data=f'Macro_{namedata}.dat'
 
 #Set default dtype to float32
@@ -118,7 +118,7 @@ if wavy==True: #sample only inside walls
     vsorti=[]
     etasorti=[]
     sorti=[]
-    leps=6
+    leps=1
     for i in range(int(min(x)),int(max(x))):
         close=np.argmin(abs(i-wall_inf_x))
         temp=y[x==i]
@@ -139,6 +139,9 @@ if wavy==True: #sample only inside walls
         vsorti=np.concatenate((vsorti,vtemp))
         etasorti=np.concatenate((etasorti,etatemp))
         sorti=np.concatenate((sorti,stemp))
+        dist=(abs(xsorti-np.mean(x))+abs(ysorti-np.mean(y)))
+        distnorm=dist/max(dist)
+        proba=(1-(distnorm))**2/sum((1-(distnorm))**2)
     N=len(ysorti)
     idx = np.random.choice(N, N_train, replace=False)
 
@@ -172,7 +175,7 @@ print(ubar, max_u)
 
 # Fixing D and U0 defining the Bingham number
 # Arbitrary definition: with experimental data, we can use D and U0 from the data
-D = 50.
+D = max(x_train)#np.mean(x_train)
 U0 = 1.e-4
 
 u_train = u_train / U0
@@ -202,7 +205,7 @@ Dnn = 1. #/(Xmax )
 U0nn = tau*(U0)/max_u
 V0nn=torch.mean(v_train)
 # gama_c = ( U0nn/Dnn )
-gama_c = 1.
+gama_c = 1.0
 print(r"$\gamma_c_nn",U0/D)
 
 # plt.scatter(x,y,c=u)
@@ -299,7 +302,7 @@ class Sequentialmodel(nn.Module):
         gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)#/gama_c
 
 
-        eta_star=alpha_1+(1-alpha_1)*(1+(alpha_2*gammap/(gama_c))**2)**((n-1)/2) #1e-6
+        eta_star=alpha_1+(1-alpha_1)*(1+alpha_2*(gammap/(gama_c))**2)**((n-1)/2) #1e-6
         
         S11 = S11#/gama_c #/ gammapstar_mean
         S22 = S22#/gama_c #/ gammapstar_mean
@@ -314,7 +317,7 @@ class Sequentialmodel(nn.Module):
         sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
 
-        kappa = 1#(U0/D) * (U0/D)**(-n)
+        kappa = 1# * (U0/D)**(-n)
 
         f_u = (- p_x * kappa + sig11_x + sig12_y) #/ kappa
         f_v = (- p_y * kappa + sig12_x + sig22_y) #/ kappa #0.0001
@@ -364,7 +367,7 @@ class Sequentialmodel(nn.Module):
         gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)#/gama_c
 
 
-        eta_star=alpha_1+(1-alpha_1)*(1+(alpha_2*gammap/(gama_c))**2)**((n-1)/2) #1e-6
+        eta_star=alpha_1+(1-alpha_1)*(1+alpha_2*(gammap/(gama_c))**2)**((n-1)/2) #1e-6
         
         S11 = S11#/gama_c #/ gammapstar_mean
         S22 = S22#/gama_c #/ gammapstar_mean
@@ -379,12 +382,12 @@ class Sequentialmodel(nn.Module):
         sig12_y = autograd.grad(sig12,y,torch.ones(x.shape).to(device),create_graph=True)[0]
         sig22_y = autograd.grad(sig22,y,torch.ones(x.shape).to(device),create_graph=True)[0] ##bug here for low nbr of points##
 
-        kappa = 1#(U0/D)**(-n)*(U0/D)# * (U0/D)**(-n)
+        kappa = 1#(U0/D)#**(-n)*(U0/D)# * (U0/D)**(-n)
 
         f_u = (- p_x * kappa + sig11_x + sig12_y) #/ kappa
         f_v = (- p_y * kappa + sig12_x + sig22_y) #/ kappa #0.0001
         
-        loss_phy =  10**(w-1)*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
+        loss_phy =  10**(w)*(torch.sum(torch.square(f_u)) + torch.sum(torch.square(f_v))) #0.001
         loss_u=torch.sum(torch.square(u_train - u)) + torch.sum(torch.square(v_train - v))
         loss_pos=1000*(torch.maximum(torch.as_tensor(0),(0.005-alpha_2))+torch.maximum(torch.as_tensor(0),(0.005-alpha_1))+torch.maximum(torch.as_tensor(0),-n) )#+torch.maximum(torch.as_tensor(0),-(2-alpha_1)) +torch.maximum(torch.as_tensor(0),-(2-n)))
         
@@ -405,7 +408,7 @@ class Sequentialmodel(nn.Module):
 
         # return loss_phy+loss_u+loss_pos, p_x , (sig11_x + sig12_y)
         # return loss_phy+loss_u, p_x , (sig11_x + sig12_y)
-        return loss_u+loss_phy+loss_pos, torch.mean(p),torch.max(p)
+        return loss_u+loss_phy+loss_pos, torch.min(gammap),torch.max(gammap)
 
     'callable for optimizer'                                       
     def closure(self):
@@ -501,7 +504,7 @@ start_time = time.time()
 
 param = list(PINN.parameters())
 'Adam Optimizer'
-optimizer = optim.Adam(param, lr=0.005)#, amsgrad=False)
+optimizer = optim.Adam(param, lr=0.0025)#, amsgrad=False)
 
 
 epoch =400000
