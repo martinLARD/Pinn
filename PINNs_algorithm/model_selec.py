@@ -473,9 +473,12 @@ class Sequentialmodel(nn.Module):
         alpha_1_cross= self.alpha_1_cross
         alpha_2_cross=self.alpha_2_cross
 
-        beta_1 = (int(((torch.tanh(10*self.beta_1)+1)/2)+0.6))
-        beta_2=(int(((torch.tanh(10*self.beta_2)+1)/2)+0.6))
-        beta_3=(int(((torch.tanh(10*self.beta_3)+1)/2)+0.6))
+        beta_1temp = ((torch.tanh(10*self.beta_1)+1)/2)
+        beta_2temp=((torch.tanh(10*self.beta_2)+1)/2)
+        beta_3temp=((torch.tanh(10*self.beta_3)+1)/2)
+        beta_1=int(min(0,beta_1temp-beta_2temp,beta_1temp-beta_3temp)+1)
+        beta_2=int(min(0,beta_2temp-beta_1temp,beta_2temp-beta_3temp)+1)
+        beta_3=int(min(0,beta_3temp-beta_2temp,beta_3temp-beta_1temp)+1)
     
         x = torch.from_numpy(x_train).to(device)
         y = torch.from_numpy(y_train).to(device)
@@ -604,18 +607,31 @@ for i in range(epoch):
 
     
     if i<30_000:
-        loss,loss_u, loss_phy = PINN.loss_PDE(X_train,u_train, v_train,w, wbeta)
-    elif i>=30_000:
-        loss, loss_u, loss_phy = PINN.loss_PDE2(X_train,u_train, v_train,w, wbeta)
-    
-    loss.backward()
-    optimizer.step()
-    if i % 200 == 0:
+        loss, gradp, sig = PINN.loss_PDE(X_train,u_train, v_train,w, wbeta)
+        if i % 200 == 0:
+         print(sig)
          print('#########',i,'/','loss:',loss.item(),'/','b',(np.tanh(5*PINN.beta_1.item())+1)/2,(np.tanh(5*PINN.beta_2.item())+1)/2,(np.tanh(5*PINN.beta_3.item())+1)/2,'#########')
-         print('#########',i,'/','HB','/','a1',PINN.alpha_1_HB.item(),'/','n',PINN.alpha_2_HB.item(),'#########')
-         print('#########',i,'/','Car','/','a1',PINN.alpha_1_car.item(),'/','a2',PINN.alpha_2_car.item(),'/','n',PINN.alpha_3_car.item(),'#########')
-         print('#########',i,'/','Cross','/','a1',PINN.alpha_1_cross.item(),'/','a2',PINN.alpha_2_cross.item(),'/','n',PINN.alpha_3_cross.item(),'#########')
+         print('#########',i,'/',' ','/','a1',PINN.alpha_1_HB.item(),'/','n',PINN.alpha_2_HB.item(),'#########')
+         print('#########',i,'/',' ','/','a1',PINN.alpha_1_car.item(),'/','a2',PINN.alpha_2_car.item(),'/','n',PINN.alpha_3_car.item(),'#########')
+         print('#########',i,'/',' ','/','a1',PINN.alpha_1_cross.item(),'/','a2',PINN.alpha_2_cross.item(),'/','n',PINN.alpha_3_cross.item(),'#########')
          print(' ')
+
+    elif i>=30_000:
+
+        loss, gradp, sig = PINN.loss_PDE2(X_train,u_train, v_train,w, wbeta)
+        if i % 200 == 0:
+            beta_1temp = ((np.tanh(10*PINN.beta_1.item())+1)/2)
+            beta_2temp=((np.tanh(10*PINN.beta_2.item())+1)/2)
+            beta_3temp=((np.tanh(10*PINN.beta_3.item())+1)/2)
+            beta_1=int(min(0,beta_1temp-beta_2temp,beta_1temp-beta_3temp)+1)
+            beta_2=int(min(0,beta_2temp-beta_1temp,beta_2temp-beta_3temp)+1)
+            beta_3=int(min(0,beta_3temp-beta_2temp,beta_3temp-beta_1temp)+1)
+            print(sig)
+            print('#########',i,'/','loss:',loss.item(),'/','b HB Car Cross',beta_1,beta_2,beta_3,'#########')
+            print('#########',i,'/',' ','/','a1',PINN.alpha_1_HB.item(),'/','n',PINN.alpha_2_HB.item(),'#########')
+            print('#########',i,'/',' ','/','a1',PINN.alpha_1_car.item(),'/','a2',PINN.alpha_2_car.item(),'/','n',PINN.alpha_3_car.item(),'#########')
+            print('#########',i,'/',' ','/','a1',PINN.alpha_1_cross.item(),'/','a2',PINN.alpha_2_cross.item(),'/','n',PINN.alpha_3_cross.item(),'#########')
+            print(' ')
 
 
     if i == 5_000_000:
@@ -631,4 +647,3 @@ for i in range(epoch):
                             f'{eta[j]}'+" "+\
                             f'{gammap[j]}'+"\n")
         loss_file.close()
-
