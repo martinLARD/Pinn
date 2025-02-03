@@ -4,6 +4,8 @@ from torch import Tensor                  # tensor node in the computation graph
 import torch.nn as nn                     # neural networks
 import torch.optim as optim               # optimizers e.g. gradient descent, ADAM, etc.
 
+
+
 import time
 import pandas as pd
 import numpy as np
@@ -159,13 +161,12 @@ if walls==True:
     eta_train = etasorti[idx]
     s_train = sorti[idx]
 
-plt.scatter(x_train,y_train,c=s_train)
 if walls==True:
-   plt.scatter(wall[:,0],wall[:,1])
-plt.show()
+   plt.scatter(x_train,y_train,c=s_train)
 
-plt.scatter(s_train,eta_train)
-plt.show()
+   plt.scatter(wall[:,0],wall[:,1])
+   plt.show()
+
 
 # Normalization
 
@@ -234,7 +235,7 @@ class Sequentialmodel(nn.Module):
             
         self.alpha_1 = nn.Parameter(torch.ones([1], dtype=torch.float32)*1.2)
 
-        self.alpha_2 = nn.Parameter(torch.ones([1], dtype=torch.float32)*4.)
+        self.alpha_2 = nn.Parameter(torch.ones([1], dtype=torch.float32)*0.4)
         
         
 
@@ -409,8 +410,8 @@ class Sequentialmodel(nn.Module):
         alpha_1 = self.alpha_1
         n=self.alpha_2
 
-        x = torch.from_numpy(x_train).to(device)
-        y = torch.from_numpy(y_train).to(device)
+        x = torch.from_numpy(x).to(device)
+        y = torch.from_numpy(y).to(device)
         x.requires_grad = True
         y.requires_grad = True
  
@@ -481,21 +482,21 @@ for i in range(epoch):
     # zeroes the gradient buffers of all parameters
 
     loss.backward()
-
-    if i == 700_000:
+    optimizer.step()
+    if i % 100_000==0:
         print('Save of the final output')
-        u,v,p,gammap, eta =PINN.eval(XX/D, YY/D)
+        print(f"{mainpath}/Macro_final_save{nbr}.dat")
+        u,v,p,gammap, eta =PINN.eval(x, y)
         loss_file = open(f"{mainpath}/Macro_final_save{nbr}.dat","w")
-        for j in range(len(XX)):
+        for j in range(len(x)):
                 loss_file.write(
-                            f'{XX[j]}'+" "+\
-                            f'{YY[j]}'+" "+\
+                            f'{x[j]}'+" "+\
+                            f'{y[j]}'+" "+\
                             f'{p[j]}'+" "+\
                             f'{u[j]}'+" "+\
                             f'{v[j]}'+" "+\
                             f'{eta[j]}'+" "+\
                             f'{gammap[j]}'+"\n")
         loss_file.close()
-
 
 
