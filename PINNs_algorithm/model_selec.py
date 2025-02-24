@@ -633,7 +633,8 @@ for i in range(epoch):
             print('#########',i,'/',' ','/','a1',PINN.alpha_1_cross.item(),'/','a2',PINN.alpha_2_cross.item(),'/','n',PINN.alpha_3_cross.item(),'#########')
             print(' ')
 
-
+    loss.backward()
+    optimizer.step()
     if i == 5_000_000:
         u,v,p,gammap, eta =PINN.eval(XX/D, YY/D)
         loss_file = open(f"{mainpath}/Macrolast.dat","w")
