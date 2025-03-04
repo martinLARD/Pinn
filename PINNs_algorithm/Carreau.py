@@ -275,8 +275,8 @@ class Sequentialmodel(nn.Module):
         gammap = (2.*(S11**2. + 2.*S12**2. + S22**2.))**(0.5)
 
 
-        eta_star=alpha_1+(1-alpha_1)*(1+(alpha_3*gammap)**n)**(-1)
-
+        eta_star=alpha_1+(1-alpha_1)*(1+alpha_3*(gammap)**2)**((n-1)/2) 
+        
         S11 = S11
         S22 = S22
         S12 = S12
