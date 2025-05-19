@@ -1,7 +1,7 @@
 
 ## Repository Overview
 
-This repository contains code and data for running simulations. It includes three distinct scripts:
+This repository contains code and data for running inference based on (cite paper). It includes three python distinct scripts:
 
 - One for inferring the Carreau model.
 - Another for the Herschel-Bulkley model.
