@@ -17,3 +17,7 @@ With this code, you simply need to:
 2. Configure the area from which you want to sample your points and the probability of sampling a point (between lines 108 and 153).
 
     Licence : Informations sur la licence du projet.
+
+## License
+ 
+Distributed under the terms of the BSD 3 license.
