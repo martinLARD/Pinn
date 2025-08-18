@@ -595,16 +595,6 @@ print(w,wbeta)
 
 
 for i in range(epoch):
-
-    if i==150000000_000:
-        w, wbeta=PINN.weight(X_train)
-        w=w.detach().item()
-        wbeta=wbeta.detach().item()
-        print(w,wbeta)
-        print('para opti')
-    optimizer.zero_grad()
-
-
     
     if i<30_000:
         loss, gradp, sig = PINN.loss_PDE(X_train,u_train, v_train,w, wbeta)
