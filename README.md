@@ -1,31 +1,45 @@
 
-## Repository Overview
+# Model Inference Repository
 
-This repository contains code and data for running inference based on (cite paper). It includes three python distinct scripts:
+## Overview
+This repository provides Python scripts for running inference on rheological models, as described in Martin Lardy, Sham Tlili, Simon Gsell, Inferring viscoplastic models from velocity fields: A physics-informed neural network approach, Journal of Non-Newtonian Fluid Mechanics,(https://www.sciencedirect.com/science/article/pii/S0377025725001302). 
+In this github version it supports three models:
+- **Carreau**
+- **Herschel-Bulkley**
+- **Papanastasiou**
+- **Model selection between viscoplastic models**
 
-- One for inferring the Carreau model.
-- Another for the Herschel-Bulkley model.
-- A third for model selection between these two and a Papanastasiou model.
+But the PINNs is tuned to be adaptable to any viscoplastic model.
+The dataset includes numerical simulations of flows (Herschel-Bulkley, Carreau, or Papanastasiou) across different geometries and parameter sets.
 
-The data consists of numerical simulations of various flows (Herschel-Bulkley, Carreau, or Papanastasiou) in different geometries with varying parameter sets.
+---
 
 ## Features
+- **Easy-to-use scripts**: Just provide a data file (specified in each `.py` script).
+- **Customizable sampling**: Configure the sampling area and point probability (lines 108–153 in the scripts).
 
-With this code, you simply need to:
+---
 
-1. Provide a data file to the script (specified in the first lines of each `.py` file).
-2. Configure the area from which you want to sample your points and the probability of sampling a point (between lines 108 and 153).
+## Updates
+We refined the **model selection loss equations** to improve computational efficiency:
+- Each viscosity is now weighted by **βᵢ** and included in the total loss (Equation 19).
+- Updated Equations (19) and (20) from the paper:
 
-    Licence : Informations sur la licence du projet.
+  ![Updated Equation 19](https://github.com/martinLARD/Pinn/blob/main/eq18.png)
+  and
+  ![Updated Equation 20](https://github.com/martinLARD/Pinn/blob/main/eq20.png)
 
-## Update
-The equations (19) and (20) in the paper as been modified into:
-![equation](https://github.com/martinLARD/Pinn/blob/main/eq18.png)
-and 
-![equation](https://github.com/martinLARD/Pinn/blob/main/eq20.png)
+  where:
+  ![Weighted Viscosity](https://github.com/martinLARD/Pinn/blob/main/eq3.png)
 
-where kappa= and eta=
-This expression doesn't change the result shown in the figure but result in a smaller computational efficiency
+**Note**: These changes do not affect the results of the paper.
+
+---
+
+## Usage
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/martinLARD/Pinn.git
 
 ## License
  
