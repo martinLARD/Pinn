@@ -19,10 +19,10 @@ With this code, you simply need to:
     Licence : Informations sur la licence du projet.
 
 ## Update
-The equation (19) in the paper as been modified into 
-$$
-\color{blue}\mathcal{L}_{phy,tot}=\lVert -\kappa\nabla P_\theta^*+ \nabla\cdot (2 \eta^* S^*_\theta) \rVert.\color{black}
-$$
+The equations (19) and (20) in the paper as been modified into:
+
+where kappa= and eta=
+This expression doesn't change the result shown in the figure but result in a smaller computational efficiency
 
 ## License
  
