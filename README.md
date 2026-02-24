@@ -18,6 +18,12 @@ With this code, you simply need to:
 
     Licence : Informations sur la licence du projet.
 
+## Update
+The equation (19) in the paper as been modified into 
+$$
+\color{blue}\mathcal{L}_{phy,tot}=\lVert -\kappa\nabla P_\theta^*+ \nabla\cdot (2 \eta^* S^*_\theta) \rVert.\color{black}
+$$
+
 ## License
  
 Distributed under the terms of the BSD 3 license.
