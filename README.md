@@ -20,6 +20,9 @@ With this code, you simply need to:
 
 ## Update
 The equations (19) and (20) in the paper as been modified into:
+![equation](https://github.com/martinLARD/Pinn/blob/main/eq18.png)
+and 
+![equation](https://github.com/martinLARD/Pinn/blob/main/eq20.png)
 
 where kappa= and eta=
 This expression doesn't change the result shown in the figure but result in a smaller computational efficiency
