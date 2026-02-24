@@ -2,7 +2,7 @@
 # Model Inference Repository
 
 ## Overview
-This repository provides Python scripts for running inference on rheological models, as described in Martin Lardy, Sham Tlili, Simon Gsell, Inferring viscoplastic models from velocity fields: A physics-informed neural network approach, Journal of Non-Newtonian Fluid Mechanics,(https://www.sciencedirect.com/science/article/pii/S0377025725001302). 
+This repository provides Python scripts for running inference on rheological models, as described in *Martin Lardy, Sham Tlili, Simon Gsell, Inferring viscoplastic models from velocity fields: A physics-informed neural network approach, Journal of Non-Newtonian Fluid Mechanics*(https://www.sciencedirect.com/science/article/pii/S0377025725001302). 
 In this github version it supports three models:
 - **Carreau**
 - **Herschel-Bulkley**
